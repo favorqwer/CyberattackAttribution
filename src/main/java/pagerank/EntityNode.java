@@ -83,7 +83,7 @@ public class EntityNode{
 
 
 
-    long getID(){return ID;}
+    public long getID(){return ID;}
 
     FileEntity getF() {
         return f;
@@ -97,7 +97,7 @@ public class EntityNode{
         return p;
     }
 
-    String getSignature() {
+    public String getSignature() {
         return signature;
     }
 

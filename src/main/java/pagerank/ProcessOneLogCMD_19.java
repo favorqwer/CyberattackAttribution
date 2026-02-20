@@ -119,22 +119,6 @@ public class ProcessOneLogCMD_19 {
                     infer.calculateWeightsRandom();
                     break;
                 case "nodoze":
-
-//                    List<String> fileMalicious = new ArrayList<>();
-//                    fileMalicious.add(detection);
-//                    List<String> ipMalicious = new ArrayList<>();
-//                    NODOZE nodoze = new NODOZE(fileMalicious, ipMalicious, orignal, backtrack, CPR.afterMerge,detection, importantEntries);
-//                    long nodozeStart = System.currentTimeMillis();
-//                    int nodozeRes = nodoze.filterExp();
-//                    long nodozeEnd = System.currentTimeMillis();
-//                    long nodozeTimeCost =nodozeEnd - nodozeStart;
-//                    File nodozeResFile = new  File(resultDir+"/nodoze.txt");
-//                    FileWriter fileWriter = new FileWriter(nodozeResFile);
-//                    fileWriter.write("Nodoze Res:"+String.valueOf(nodozeRes)+"\n");
-//                    fileWriter.write("Nodoze time: "+String.valueOf(nodozeTimeCost));
-//                    System.out.println("Size of Nodoze Res: "+ String.valueOf(nodozeRes));
-//                    System.out.println("Time of Nodoze: " + String.valueOf(nodozeTimeCost));
-//                    fileWriter.close();
                     return;
                 case "read_only":
                     Map<String, Integer> res = infer.graphSizeWithoutReadonly();
@@ -357,6 +341,7 @@ public class ProcessOneLogCMD_19 {
                 //6. 找出可能的攻击入口点（Entry Points）并生成最终溯源结果
                 List<List<String>> forwardStarts = infer.getForwardStarts();
                 Map<String, Double> nodeReputation = IterateGraph.getNodeReputation(infer.graph);
+
                 IterateGraph.outputTopStarts(resultDir, forwardStarts, nodeReputation);
                 boolean outputFilterGraph = true;
                 //只保留能从 forwardStarts 正向到达 detection 的所有路径。
@@ -448,22 +433,75 @@ public class ProcessOneLogCMD_19 {
 
             // ====================== 生成包含所有入口的完整溯源图 ======================
             if (!allSelectedStarts.isEmpty() && outputGraph) {
-                System.out.println("Generating complete provenance graph with all entry points merged, total " + allSelectedStarts.size() + " entries...");
+                System.out.println("Generating complete provenance graph with all entry points merged...");
 
+                // 1. 生成原始合并图
                 DirectedPseudograph<EntityNode, EventEdge> allInOneGraph =
                         infer.combineBackwardAndForwardForMultipleStarts(allSelectedStarts, orignal);
 
-                IterateGraph mergedOut = new IterateGraph(allInOneGraph);
-                String mergedPath = resFolderForFilter.getAbsolutePath() + "/" +
-                        "complete_provenance_graph_" + filename + "_" + method + suffix;
+                // =========================================================================
+                // [步骤 A] 先导出【原始未过滤】的图 (ORIGINAL)
+                // =========================================================================
+                String originalPath = resFolderForFilter.getAbsolutePath() + "/" +
+                        "complete_graph_ORIGINAL_" + filename + "_" + method + suffix;
 
-                mergedOut.exportGraph(mergedPath);
-                // ======== 新增：自动转换为 SVG ========
-                DotToSvg(mergedPath + ".dot", mergedPath + ".svg");
+                IterateGraph originalOut = new IterateGraph(allInOneGraph);
+                originalOut.exportGraph(originalPath);
+                try {
+                    DotToSvg(originalPath + ".dot", originalPath + ".svg");
+                    System.out.println("Complete provenance graph generated successfully (" + allSelectedStarts.size() + " entries merged):");
+                    System.out.println("File: " + originalPath + ".svg");
+                    System.out.println("Vertices: " + allInOneGraph.vertexSet().size() + "   Edges: " + allInOneGraph.edgeSet().size());
+                } catch (Exception e) { System.err.println("SVG Error: " + e.getMessage()); }
 
-                System.out.println("Complete provenance graph generated successfully (" + allSelectedStarts.size() + " entries merged):");
-                System.out.println("File: " + mergedPath + ".svg");
-                System.out.println("Vertices: " + allInOneGraph.vertexSet().size() + "   Edges: " + allInOneGraph.edgeSet().size());
+
+                // =========================================================================
+                // [步骤 B] LLM 语义过滤交互 (Human-in-the-loop)
+                // =========================================================================
+                System.out.println("\n-------------------------------------------------------------");
+                System.out.println(">>> [LLM Filter] Starting Semantic Filtering Phase...");
+
+                // 序列化当前图为 JSON (纯语义，无分数)
+                String jsonForLLM = LLMGraphUtils.serializeGraphForLLM(allInOneGraph, "Combined_Entry_Points");
+
+                // 保存 JSON 文件
+                String jsonPath = resFolderForFilter.getAbsolutePath() + "/" + "llm_context_" + filename + ".json";
+                try (FileWriter jsonWriter = new FileWriter(jsonPath)) {
+                    jsonWriter.write(jsonForLLM);
+                }
+
+                // 交互式暂停
+                System.out.println(">>> [ACTION REQUIRED] JSON context saved to: " + jsonPath);
+                System.out.println(">>> Please upload this file to the LLM with the Broad Concept Prompt.");
+                System.out.println(">>> Paste the LLM's returned ID list (e.g. [120, 125]) below and press ENTER:");
+
+                Scanner scanner = new Scanner(System.in);
+                String llmResponse = scanner.nextLine();
+
+                // 执行过滤 (注意：这会直接修改 allInOneGraph 对象)
+                if (llmResponse != null && !llmResponse.trim().isEmpty() && !llmResponse.trim().equals("[]")) {
+                    System.out.println(">>> Applying LLM semantic filter...");
+                    LLMGraphUtils.filterGraphWithRetentionList(allInOneGraph, llmResponse);
+
+                    // =========================================================================
+                    // [步骤 C] 导出【LLM过滤后】的图 (FILTERED)
+                    // =========================================================================
+                    String filteredPath = resFolderForFilter.getAbsolutePath() + "/" +
+                            "complete_graph_LLM_FILTERED_" + filename + "_" + method + suffix;
+
+                    IterateGraph filteredOut = new IterateGraph(allInOneGraph);
+                    filteredOut.exportGraph(filteredPath);
+
+                    try {
+                        DotToSvg(filteredPath + ".dot", filteredPath + ".svg");
+                        System.out.println(">>> [Saved] LLM Filtered Graph: " + filteredPath + ".svg");
+                        System.out.println(">>> Graph size reduced: Vertices: " + allInOneGraph.vertexSet().size() + "   Edges: " + allInOneGraph.edgeSet().size());
+                    } catch (Exception e) { System.err.println("SVG Error: " + e.getMessage()); }
+
+                } else {
+                    System.out.println(">>> No input received. Skipping filter and saving duplicate of original.");
+                }
+                System.out.println("-------------------------------------------------------------\n");
             }
 
         } catch (Exception e) {

@@ -12,9 +12,6 @@ public class Utils {
         Map<String, String> res = new HashMap<>();
         res.put("raw", entry);
         String[] fields = entry.split(";;", -1);
-        if (fields.length < 9) {
-            return res;
-        }
 
         res.put("timestamp", fields[0]);
         res.put("cpu",       fields[1]);
@@ -25,8 +22,11 @@ public class Utils {
         res.put("cwd",       fields[6]);
         res.put("latency",   fields[7]);
         res.put("args",      fields[8]);
-
-
+        if (fields.length > 12) {
+            res.put("anomaly_score", fields[12]);
+        } else {
+            res.put("anomaly_score", "0.0");
+        }
         return res;
     }
 

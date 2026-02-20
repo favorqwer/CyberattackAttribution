@@ -2,9 +2,6 @@ package pagerank;
 
 import java.math.BigDecimal;
 
-/**
- * Created by fang on 3/21/18.
- */
 public class EventEdge{
     private EntityNode source;
     private EntityNode sink;
@@ -18,6 +15,9 @@ public class EventEdge{
     public double timeWeight;
     public double amountWeight;
     public double structureWeight;
+    // [新增 1] 异常相关字段
+    public double anomalyWeight; // 用于 LDA 计算后的权重
+    public double anomalyScore;  // 原始日志中的异常分数
 
     EventEdge(PtoFEvent pf){
         source = new EntityNode(pf.getSource());
@@ -28,6 +28,7 @@ public class EventEdge{
         type = pf.getType();
         event = pf.getEvent();
         size = pf.getSize();
+        anomalyScore = pf.getAnomalyScore();
     }
 
     EventEdge(PtoPEvent pp){
@@ -39,6 +40,7 @@ public class EventEdge{
         type = pp.getType();
         event = pp.getEvent();
         size = 0;
+        anomalyScore = pp.getAnomalyScore();
     }
 
     EventEdge(FtoPEvent fp){
@@ -58,6 +60,7 @@ public class EventEdge{
         type = fp.getType();
         event = fp.getEvent();
         size = fp.getSize();
+        anomalyScore = fp.getAnomalyScore();
     }
 
     EventEdge(NtoPEvent np){
@@ -75,6 +78,7 @@ public class EventEdge{
         type = np.getType();
         event = np.getEvent();
         size = np.getSize();
+        anomalyScore = np.getAnomalyScore();
     }
 
     EventEdge(PtoNEvent pn){
@@ -93,6 +97,7 @@ public class EventEdge{
         type = pn.getType();
         event = pn.getEvent();
         size = pn.getSize();
+        anomalyScore = pn.getAnomalyScore();
     }
 
     public EventEdge(EventEdge edge){
@@ -104,6 +109,9 @@ public class EventEdge{
         this.type = edge.getType();
         this.size = edge.getSize();
         this.weight = edge.weight;
+        // [新增] 复制异常字段
+        this.anomalyScore = edge.anomalyScore;
+        this.anomalyWeight = edge.anomalyWeight;
     }
 
     public EventEdge(String type, BigDecimal starttime, BigDecimal endtime, long amount, EntityNode from, EntityNode to, long id){
@@ -114,6 +122,8 @@ public class EventEdge{
         this.startTime = starttime;
         this.endTime = endtime;
         this.id = id;
+        // 默认构造，异常分数为0
+        this.anomalyScore = 0.0;
     }
     @Deprecated
     public EventEdge(EventEdge edge, long id){                   //for split edge
@@ -124,6 +134,8 @@ public class EventEdge{
         this.endTime = edge.getEndTime();
         this.type = edge.getType();
         this.size = edge.getSize();
+        // [新增]
+        this.anomalyScore = edge.anomalyScore;
     }
 
     public EventEdge(EventEdge edge, EntityNode from, EntityNode to, long id){
@@ -135,11 +147,15 @@ public class EventEdge{
         this.type = edge.getType();
         this.size = edge.getSize();
         this.event = edge.getEvent();
+        // [新增]
+        this.anomalyScore = edge.anomalyScore;
     }
 
     public EventEdge merge(EventEdge e2){
         this.endTime = e2.endTime;
         this.size += e2.size;
+        // 当多条日志合并为一条边时，我们认为只要其中包含高异常行为，该边就具备高异常性
+        this.anomalyScore = Math.max(this.anomalyScore, e2.anomalyScore);
         return this;
     }
 
@@ -152,21 +168,21 @@ public class EventEdge{
         this.event = event;
     }
 
-    long getID(){return id;}
+    public long getID(){return id;}
 
     public void setId(long id){
         this.id = id;
     }
 
-    EntityNode getSource(){return source;}
+    public EntityNode getSource(){return source;}
 
-    EntityNode getSink(){ return sink;}
+    public EntityNode getSink(){ return sink;}
 
     BigDecimal getStartTime(){
         return startTime;
     }
 
-    BigDecimal getEndTime(){
+    public BigDecimal getEndTime(){
         return endTime;
     }
 
@@ -179,16 +195,21 @@ public class EventEdge{
         return type;
     }
 
-    String getEvent(){return event;}
+    public String getEvent(){return event;}
 
     public boolean eventIsNull(){
         return event == null;
     }
 
-    long getSize(){return size;}
+    public long getSize(){return size;}
 
     public BigDecimal getDuration(){
         return endTime.subtract(startTime);
+    }
+
+    // [新增] Getter 方法，供 BackwardPropagate_pf 调用
+    public double getAnomalyScore() {
+        return anomalyScore;
     }
 
     @Override
@@ -235,6 +256,8 @@ public class EventEdge{
                 ", timeWeight=" + timeWeight +
                 ", amountWeight=" + amountWeight +
                 ", structureWeight=" + structureWeight +
+                ", anomalyWeight=" + anomalyWeight +
+                ", anomalyScore=" + anomalyScore +   // [新增]
                 '}';
     }
 }
