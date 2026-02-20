@@ -1,0 +1,5 @@
+POI = /home/fang/DataSource/target.txt
+lowRP = /home/fang/DataSource/fileA.txt,/home/fang/DataSource/fileB.txt
+threshold = 0.005691056911
+trackOrigin = false
+detectionSize = 11408302

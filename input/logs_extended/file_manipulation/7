@@ -1,0 +1,7 @@
+#merge two files into one using java
+/home/lcl/main.class
+
+-/home/lcl/wget-1.19.tar.gz
+-/home/lcl/aaa
++/home/lcl/bbb
+

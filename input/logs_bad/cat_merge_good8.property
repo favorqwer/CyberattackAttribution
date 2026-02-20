@@ -1,0 +1,5 @@
+POI = /home/lcl/target
+lowRP = /media/lcl/LCL/good,/media/lcl/LCL/good2
+trackOrigin = false
+detectionSize = 16514544
+criticalEdge = /media/lcl/LCL/good2,4523cat;4523cat,/home/lcl/target;4497bash,4523cat;/media/lcl/LCL/good,4521cat;4497bash,4521cat;4521cat,/home/lcl/target

@@ -1,0 +1,3 @@
+#copy file from USB driver to local storage 
+
+/media/lcl/LCL/logs.zip(/dev/sdb) -> /home/lcl/logs.zip

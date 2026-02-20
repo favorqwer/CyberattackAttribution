@@ -1,0 +1,6 @@
+POI = /home/pxf109/8.zip
+highRP = 129.22.1.19:37418->129.22.31.135:22
+trackOrigin = true
+detectionSize = 11001509
+threshold = 0.1
+criticalNodes=129.22.1.19:37418->129.22.31.135:22,15466sshd,15467scp,/home/pxf109/8.zip

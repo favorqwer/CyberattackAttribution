@@ -1,0 +1,6 @@
+POI = /home/lcl/leaked.txt
+highRP = /home/lcl/mal.sh
+threshold = 0.232
+trackOrigin = false
+detectionSize = 30488
+criticalEdge = /home/lcl/mal.sh,4022mal.sh;3966bash,4022mal.sh;4022mal.sh,4023ls;4023ls,/home/lcl/leaked.txt

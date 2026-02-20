@@ -1,0 +1,4 @@
+POI=/var/vpnfilter
+lowRP = 172.31.71.251:51928->172.31.77.48:80
+detectionSize=296592
+criticalEdge = 172.31.71.251:51928->172.31.77.48:80,18021python;18021python,/tmp/img;18021python,/var/vpnfilter

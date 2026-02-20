@@ -1,0 +1,6 @@
+POI = /home/pxf109/reptracker_exp_data/python_relevent/1.zip?dl=0
+highRP = 129.22.31.135:57088->162.125.6.6:443, 129.22.31.135:51660->162.125.6.1:443
+detectionSize = 11001509
+threshold = 0.1368055556
+trackOrigin = false
+criticalNodes=129.22.31.135:57088->162.125.6.6:443,15361wget,/home/pxf109/reptracker_exp_data/python_relevent/1.zip?dl=0

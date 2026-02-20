@@ -1,0 +1,6 @@
+POI = /home/lcl/mal.sh
+highRP = 172.20.33.50:34592->172.20.40.238:22
+threshold = 0.0093
+trackOrigin = true
+detectionSize = 21
+criticalEdge = 172.20.33.50:34592->172.20.40.238:22,1769sshd;1769sshd,1770bash;1770bash,1785vim;1785vim,/home/lcl/mal.sh

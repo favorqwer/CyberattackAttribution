@@ -1,0 +1,4 @@
+POI = /home/lcl/target
+lowRP = 192.168.29.234:40402->208.118.235.20:80
+threshold = 0.3
+detectionSize = 4202290

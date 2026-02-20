@@ -1,0 +1,3 @@
+POI=/usr/local/thttpd/www/cgi-bin/john/password_crack.txt
+detectionSize=48
+lowRP=/usr/local/thttpd/www/cgi-bin/john/john.conf,/etc/password.txt,/usr/local/thttpd/www/cgi-bin/john/password.lst,/usr/local/thttpd/www/cgi-bin/john/ascii.chr

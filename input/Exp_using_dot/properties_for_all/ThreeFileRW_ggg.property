@@ -1,0 +1,6 @@
+POI = /home/pxf109/reptracker_exp_data/Target_3merge.txt
+highRP = /home/pxf109/reptracker_exp_data/Test1.txt,/home/pxf109/reptracker_exp_data/Test2.txt,/home/pxf109/reptracker_exp_data/Test3.txt
+detectionSize = 17132262
+threshold = 0.005615384615
+trackOrigin = false
+criticalNodes=/home/pxf109/reptracker_exp_data/Test3.txt,/home/pxf109/reptracker_exp_data/Test1.txt,/home/pxf109/reptracker_exp_data/Test2.txt,15377python,/home/pxf109/reptracker_exp_data/Target_3merge.txt

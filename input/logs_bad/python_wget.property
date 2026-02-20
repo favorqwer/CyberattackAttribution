@@ -1,0 +1,6 @@
+POI = /home/lcl/wget-1.19.tar.gz
+lowRP = 192.168.29.234:52820->208.118.235.20:80
+threshold = 0.1368055556
+trackOrigin = false
+detectionSize = 15756
+

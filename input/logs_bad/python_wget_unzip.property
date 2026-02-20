@@ -1,0 +1,4 @@
+POI = /home/lcl/Install
+detectionSize = 17297558
+lowRP = 192.168.29.234:49226->162.125.8.6:443,192.168.29.234:48118->162.125.8.1:443
+criticalEdge = 192.168.29.234:49226->162.125.8.6:443,11433wget;11433wget,/home/lcl/wget-1.19.zip;/home/lcl/wget-1.19.zip,11437unzip;11437unzip,/home/lcl/Install

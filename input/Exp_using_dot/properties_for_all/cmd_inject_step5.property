@@ -1,0 +1,4 @@
+POI=/tmp/password_in_files.txt
+detectionSize=33989
+highRP=172.31.77.48:46722->172.31.71.251:44444
+criticalNodes=172.31.77.48:46722->172.31.71.251:44444,17889grep,/tmp/password_in_files.txt

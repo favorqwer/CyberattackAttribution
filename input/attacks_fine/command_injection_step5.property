@@ -1,0 +1,4 @@
+POI = /tmp/password_in_files.txt
+highRP = 172.31.77.48:55486->172.31.71.251:44444
+detectionSize = 20881
+criticalEdge = 10917bdoor,172.31.77.48:55486->172.31.71.251:44444;172.31.77.48:55486->172.31.71.251:44444,10943grep;10943grep,/tmp/password_in_files.txt

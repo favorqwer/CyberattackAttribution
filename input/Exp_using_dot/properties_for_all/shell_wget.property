@@ -1,0 +1,6 @@
+POI = /home/pxf109/reptracker_exp_data/4.zip?dl=0
+highRP =129.22.31.135:57080->162.125.6.6:443,129.22.31.135:51652->162.125.6.1:443
+detectionSize = 11001509
+threshold = 0.13
+trackOrigin = false
+criticalNodes=/home/pxf109/reptracker_exp_data/4.zip?dl=0,15349wget,129.22.31.135:51652->162.125.6.1:443,129.22.31.135:57080->162.125.6.6:443

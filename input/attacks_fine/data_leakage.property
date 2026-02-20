@@ -1,0 +1,4 @@
+POI = /tmp/upload
+highRP = /tmp/upload.tar
+detectionSize = 36901968
+criticalEdge = 21618tar,/tmp/upload.tar;/tmp/upload.tar,21623bzip2;21623bzip2,/tmp/upload.tar.bz2;/tmp/upload.tar.bz2,21626gpg;21626gpg,/tmp/upload;

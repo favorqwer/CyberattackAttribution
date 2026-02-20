@@ -1,0 +1,6 @@
+POI = /home/pxf109/reptracker_exp_data/leaked.txt
+highRP = /home/pxf109/reptracker_exp_data/mal.sh
+detectionSize = 1211
+threshold = 0.232
+trackOrigin = false
+criticalNodes=/home/pxf109/reptracker_exp_data/leaked.txt,15380ls,/home/pxf109/reptracker_exp_data/mal.sh,15379mal.sh

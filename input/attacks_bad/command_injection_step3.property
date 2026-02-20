@@ -1,0 +1,4 @@
+POI = /tmp/bdoor
+lowRP = 172.31.71.251:59302->172.31.77.48:8081
+detectionSize = 30856
+criticalEdge = 172.31.71.251:59302->172.31.77.48:8081,10864curl;10864curl,/tmp/bdoor

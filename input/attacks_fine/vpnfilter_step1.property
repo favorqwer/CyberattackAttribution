@@ -1,0 +1,4 @@
+POI=/tmp/img
+highRP=172.31.71.251:51926->172.31.77.48:80
+detectionSize = 92433
+criticalEdge = 172.31.71.251:51926->172.31.77.48:80,18021python;18021python,/tmp/img

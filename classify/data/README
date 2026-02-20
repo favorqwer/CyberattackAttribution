@@ -1,0 +1,1 @@
+The training data are in standard libsvm format. The first column is the label. In our case, 1 means edges we want to keep. The following three columns are scaled data weight, time weight and structure weight. train_all, val_all and test_all contains all the data and are randomly shuffled. 

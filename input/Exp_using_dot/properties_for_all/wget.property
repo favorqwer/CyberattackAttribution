@@ -1,0 +1,4 @@
+POI = /home/pxf109/6.zip?dl=0
+detectionSize = 11001509
+highRP = 129.22.31.135:57100->162.125.6.6:443
+criticalNodes=15374wget,/home/pxf109/6.zip?dl=0,129.22.31.135:57100->162.125.6.6:443

@@ -1,0 +1,6 @@
+POI = /home/lcl/upload
+highRP = 192.168.29.125:10289->192.168.29.234:22
+threshold = 0.1
+trackOrigin = true
+detectionSize = 90
+criticalEdge = 30779scp,/home/lcl/upload;30778sshd,30779scp;192.168.29.125:10289->192.168.29.234:22,30778sshd

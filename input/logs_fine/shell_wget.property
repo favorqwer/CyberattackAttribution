@@ -1,0 +1,6 @@
+POI = /home/lcl/wget-1.19.tar.gz
+highRP = 192.168.29.234:54764->208.118.235.20:80
+threshold = 0.13
+trackOrigin = false
+detectionSize = 15756
+criticalEdge = 192.168.29.234:54764->208.118.235.20:80,2710wget;2710wget,/home/lcl/wget-1.19.tar.gz;2709my_script.sh,22937bash;2709my_script.sh,2710wget

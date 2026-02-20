@@ -1,0 +1,3 @@
+POI = 172.31.71.251:54120->78.94.240.189:443
+lowRP = /tmp/upload.tar
+criticalEdge = 172.31.71.251:44444->172.31.77.48:47262,21618tar;21618tar,/temp/upload.tar;/temp/upload.tar,21623bzip2;21623bzip2,/tmp/upload.tar.bz2;/tmp/upload.tar.bz2,21626gpg;21626gpg,/tmp/upload;/tmp/upload,21629curl;21629curl,172.31.71.251:54120->78.94.240.289:443;172.31.71.251:44444->172.31.77.48:47262,21629curl

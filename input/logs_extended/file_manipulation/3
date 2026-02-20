@@ -1,0 +1,5 @@
+#read and write files with a Python script using two processes
+/home/lcl/multi_process.py
+
+-/home/lcl/my_script.sh
++/home/lcl/target.txt

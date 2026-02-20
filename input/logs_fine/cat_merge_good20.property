@@ -1,0 +1,6 @@
+POI = /home/lcl/target
+highRP = /media/lcl/LCL/good.zip,/media/lcl/LCL/good2.zip
+threshold = 0.3075880759
+trackOrigin = false
+detectionSize = 58083712
+criticalEdge = /media/lcl/LCL/good2.zip,15611cat;15611cat,/home/lcl/target;15567bash,15611cat;/media/lcl/LCL/good.zip,15607cat;15567bash,15607cat;15607cat,/home/lcl/target

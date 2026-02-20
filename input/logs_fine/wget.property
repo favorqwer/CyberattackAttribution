@@ -1,0 +1,4 @@
+POI = /home/lcl/wget-1.19.tar.gz
+highRP = 172.20.35.162:36198->208.118.235.20:80
+detectionSize = 4202290
+criticalEdge = 172.20.35.162:36198->208.118.235.20:80,26160wget;26160wget,/home/lcl/wget-1.19.tar.gz

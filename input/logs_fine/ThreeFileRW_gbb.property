@@ -1,0 +1,7 @@
+POI = /home/fang/DataSource/target.txt
+highRP = /home/fang/DataSource/fileA.txt
+lowRP = /home/fang/DataSource/fileB.txt,/home/fang/DataSource/fileC.txt
+threshold = 0.005615384615
+trackOrigin = false
+detectionSize = 17112453
+criticalEdge = 31720python,/home/fang/DataSource/target.txt;/home/fang/DataSource/fileB.txt,31720python;/home/fang/DataSource/fileA.txt,31720python;/home/fang/DataSource/fileC.txt,31720python

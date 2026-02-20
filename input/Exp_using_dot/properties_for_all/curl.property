@@ -1,0 +1,5 @@
+POI = /home/pxf109/5.zip
+detectionSize = 11001509
+highRP = 129.22.31.135:57096->162.125.6.6:443
+threshold = 0.3
+criticalNodes=129.22.31.135:57096->162.125.6.6:443,15371curl,/home/pxf109/5.zip

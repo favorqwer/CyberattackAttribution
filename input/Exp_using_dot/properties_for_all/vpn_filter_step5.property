@@ -1,0 +1,4 @@
+POI=/var/vpnfilter
+detectionSize=296592
+highRP=172.31.71.251:33982->172.31.77.48:80
+criticalNodes=/var/vpnfilter,26888python,172.31.71.251:33982->172.31.77.48:80

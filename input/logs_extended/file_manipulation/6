@@ -1,0 +1,7 @@
+#copy single file in a java program
+/home/lcl/copy.class
+
+-/home/lcl/wget-1.19.tar.gz
++/home/lcl/aaa
+
+

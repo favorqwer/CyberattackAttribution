@@ -1,0 +1,4 @@
+#download through wget then decompress using tar within a python script
+/home/lcl/foo.py
+
+/home/lcl/wget-1.19.tar.gz

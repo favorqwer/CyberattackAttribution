@@ -1,0 +1,5 @@
+POI = /home/lcl/target
+highRP = 192.168.29.234:40402->208.118.235.20:80
+threshold = 0.3
+detectionSize = 4202290
+criticalEdge = 192.168.29.234:40402->208.118.235.20:80,14629curl;14629curl,/home/lcl/target.tar.bz2;/home/lcl/target.tar.bz2,14632cp;14632cp,/home/lcl/target

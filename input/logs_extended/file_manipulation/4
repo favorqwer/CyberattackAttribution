@@ -1,0 +1,6 @@
+#uploading a file from a remote terminal through scp
+192.168.29.123 -> 192.168.29.234
+
++/home/lcl/upload
+
+

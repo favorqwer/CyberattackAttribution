@@ -1,0 +1,36 @@
+digraph G {
+  1026 [ label="/var/vpnfilter [8.202018007580829E-4]" shape="ellipse" ];
+  1003 [ label="26888python [8.204289628560652E-4]" shape="box" ];
+  1007 [ label="/usr/lib/python2.7/httplib.pyc [0.5]" shape="ellipse" ];
+  1009 [ label="/usr/lib/python2.7/mimetools.pyc [0.5]" shape="ellipse" ];
+  1022 [ label="/usr/lib/python2.7/rfc822.pyc [0.5]" shape="ellipse" ];
+  1015 [ label="/usr/lib/python2.7/random.pyc [0.5]" shape="ellipse" ];
+  1024 [ label="/tmp/img [8.202018007580829E-4]" shape="ellipse" ];
+  1017 [ label="/usr/lib/python2.7/__future__.pyc [0.5]" shape="ellipse" ];
+  1019 [ label="/usr/lib/python2.7/hashlib.pyc [0.5]" shape="ellipse" ];
+  635 [ label="/etc/resolv.conf [0.5]" shape="ellipse" ];
+  1011 [ label="/usr/lib/python2.7/tempfile.pyc [0.5]" shape="ellipse" ];
+  1013 [ label="/usr/lib/python2.7/io.pyc [0.5]" shape="ellipse" ];
+  1020 [ label="/usr/lib/python2.7/lib-dynload/_hashlib.x86_64-linux-gnu.so [0.5]" shape="ellipse" ];
+  134 [ label="/dev/urandom [0.5]" shape="ellipse" ];
+  1023 [ label="172.31.71.251:33980->172.31.77.48:80 [8.202018007580829E-4]" shape="parallelogram" ];
+  1025 [ label="172.31.71.251:33982->172.31.77.48:80 [0.0]" shape="parallelogram" ];
+  1003 -> 1026 [ label="0 1.0" ];
+  1009 -> 1003 [ label="0 1.3485812048509924E-4" ];
+  1024 -> 1003 [ label="0 1.1394768247237452E-6" ];
+  1007 -> 1003 [ label="0 2.1289957012756182E-4" ];
+  635 -> 1003 [ label="0 1.1508715929709828E-4" ];
+  1011 -> 1003 [ label="0 1.6648698770887718E-4" ];
+  1019 -> 1003 [ label="0 1.3326607646175763E-4" ];
+  1013 -> 1003 [ label="0 1.240410727891072E-4" ];
+  1020 -> 1003 [ label="0 1.1930883868850592E-4" ];
+  1015 -> 1003 [ label="0 1.8195512166880947E-4" ];
+  1017 -> 1003 [ label="0 1.261824090665053E-4" ];
+  134 -> 1003 [ label="0 1.2384467933123904E-4" ];
+  1022 -> 1003 [ label="0 2.0243646412781605E-4" ];
+  1025 -> 1003 [ label="0 0.9980600504742424" ];
+  1023 -> 1003 [ label="0 2.984435491804212E-4" ];
+  1003 -> 1024 [ label="0 1.0" ];
+  1003 -> 1023 [ label="0 1.0" ];
+  1003 -> 1025 [ label="0 1.0" ];
+}

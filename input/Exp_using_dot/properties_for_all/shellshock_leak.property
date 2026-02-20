@@ -1,0 +1,4 @@
+POI=/tmp/upload
+detectionSize=129688538
+highRP=/tmp/upload.tar
+criticalNodes=9408tar,/tmp/upload.tar,9439bzip2,/tmp/upload.tar.bz2,9461gpg,/tmp/upload

@@ -1,0 +1,30 @@
+digraph G {
+  1024 [ label="/tmp/img [0.006056400773791923]" shape="ellipse" ];
+  1003 [ label="26888python [0.006056400773791923]" shape="box" ];
+  1007 [ label="/usr/lib/python2.7/httplib.pyc [0.5]" shape="ellipse" ];
+  1009 [ label="/usr/lib/python2.7/mimetools.pyc [0.5]" shape="ellipse" ];
+  1022 [ label="/usr/lib/python2.7/rfc822.pyc [0.5]" shape="ellipse" ];
+  1015 [ label="/usr/lib/python2.7/random.pyc [0.5]" shape="ellipse" ];
+  1017 [ label="/usr/lib/python2.7/__future__.pyc [0.5]" shape="ellipse" ];
+  1019 [ label="/usr/lib/python2.7/hashlib.pyc [0.5]" shape="ellipse" ];
+  635 [ label="/etc/resolv.conf [0.5]" shape="ellipse" ];
+  1011 [ label="/usr/lib/python2.7/tempfile.pyc [0.5]" shape="ellipse" ];
+  1013 [ label="/usr/lib/python2.7/io.pyc [0.5]" shape="ellipse" ];
+  1020 [ label="/usr/lib/python2.7/lib-dynload/_hashlib.x86_64-linux-gnu.so [0.5]" shape="ellipse" ];
+  134 [ label="/dev/urandom [0.5]" shape="ellipse" ];
+  1023 [ label="172.31.71.251:33980->172.31.77.48:80 [0.0]" shape="parallelogram" ];
+  1003 -> 1024 [ label="0 1.0" ];
+  1009 -> 1003 [ label="0 4.2925621030361793E-4" ];
+  1007 -> 1003 [ label="0 9.052517159378684E-4" ];
+  635 -> 1003 [ label="0 4.250061488154633E-6" ];
+  1011 -> 1003 [ label="0 7.243573031944848E-4" ];
+  1019 -> 1003 [ label="0 0.0011550565560099226" ];
+  1013 -> 1003 [ label="0 5.587271068765868E-4" ];
+  1020 -> 1003 [ label="0 0.0014677087306309098" ];
+  1015 -> 1003 [ label="0 0.001096733908648112" ];
+  1017 -> 1003 [ label="0 8.555223567454899E-4" ];
+  134 -> 1003 [ label="0 0.0018393382298188172" ];
+  1022 -> 1003 [ label="0 0.0030765993679298807" ];
+  1023 -> 1003 [ label="0 0.9878871984524161" ];
+  1003 -> 1023 [ label="0 1.0" ];
+}

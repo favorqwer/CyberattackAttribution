@@ -1,0 +1,3 @@
+POI = /home/lcl/target
+lowRP = /home/lcl/FileA.zip,/home/lcl/FileB.zip,/home/lcl/FileC.zip
+detectionSize = 418768179 

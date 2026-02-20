@@ -1,0 +1,13 @@
+results/
+.idea/
+out/
+.txt
+/target/
+*.txt
+*_0.*
+test/*
+input_11/*
+sysrep_exp_env/*
+sysrep_case_scripts/*
+case67_fanout/*
+tools/*

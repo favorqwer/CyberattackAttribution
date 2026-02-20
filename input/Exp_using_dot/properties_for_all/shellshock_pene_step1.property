@@ -1,0 +1,4 @@
+POI=/tmp/bdoor
+detectionSize=27152
+highRP=172.31.71.251:39208->34.229.246.72:80
+criticalNodes=172.31.71.251:39208->34.229.246.72:80,21343curl,/tmp/bdoor

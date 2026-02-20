@@ -1,0 +1,12 @@
+/media/lcl/LCL/good.zip,21728cat
+/media/lcl/LCL/good.zip,/media/lcl/LCL/bad.zip
+/media/lcl/LCL/good.zip,/home/lcl/target.zip
+21728cat,/media/lcl/LCL/good.zip
+21728cat,/media/lcl/LCL/bad.zip
+21728cat,/home/lcl/target.zip
+/media/lcl/LCL/bad.zip,/media/lcl/LCL/good.zip
+/media/lcl/LCL/bad.zip,21728cat
+/media/lcl/LCL/bad.zip,/home/lcl/target.zip
+/home/lcl/target.zip,/media/lcl/LCL/good.zip
+/home/lcl/target.zip,21728cat
+/home/lcl/target.zip,/media/lcl/LCL/bad.zip

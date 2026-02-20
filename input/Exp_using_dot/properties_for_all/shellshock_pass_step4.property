@@ -1,0 +1,4 @@
+POI=/usr/local/thttpd/www/cgi-bin/john.tbz2
+detectionSize=41200194
+highRP=172.31.71.251:60620->34.229.246.72:80
+criticalNodes=172.31.71.251:60620->34.229.246.72:80,4853curl,/tmp/john.gpg,4878gpg,/usr/local/thttpd/www/cgi-bin/john.tbz2
