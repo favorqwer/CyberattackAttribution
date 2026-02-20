@@ -138,21 +138,4 @@ public class ForwardAnalysis {
         return edgeList.get(0).startTime;
     }
 
-    public static void main(String[] args){
-        String logfile = "C:\\Users\\fang2\\Desktop\\reptracker\\data\\attack_log\\cmd-inject.txt";
-        GetGraph getGraph = new GetGraph(logfile, MetaConfig.localIP);
-        getGraph.GenerateGraph();
-        DirectedPseudograph<EntityNode, EventEdge> raw_graph = getGraph.getJg();
-        ForwardAnalysis forwardTest = new ForwardAnalysis(raw_graph);
-        String start = "172.31.77.48:46722->172.31.71.251:44444";
-        int step = 10;
-        DirectedPseudograph<EntityNode, EventEdge> forwardRes = forwardTest.fowardTrack(start, step);
-        IterateGraph outputer = new IterateGraph(forwardRes);
-        outputer.exportGraph("forwardTest");
-        CausalityPreserve CPR = new CausalityPreserve(forwardRes);
-        CPR.mergeEdgeFallInTheRange2(10.0);
-        outputer = new IterateGraph(CPR.afterMerge);
-        outputer.exportGraph("forward_aftermerge");
-
-    }
 }

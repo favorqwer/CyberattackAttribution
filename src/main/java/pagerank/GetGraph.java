@@ -632,17 +632,4 @@ public class GetGraph {
         iter.exportGraph(file);
     }
 
-
-    public static void main(String[] args) throws Exception {
-        //String[] localIP={"129.22.21.193"};
-        String[] localIP = {"10.0.2.15"};
-        GetGraph test = new GetGraph("/home/fang/thesis2/Data/Expdata2/aptgetInstallUnrar.txt", localIP);
-        test.GenerateGraph();
-        IterateGraph iterateGraph = new IterateGraph(test.jg);
-        iterateGraph.bfs("/usr/bin/unrar-nonfree.dpkg-new");
-        //test.backTrackWithHopCount("/usr/bin/nodejs.dpkg-new","File",5);
-        //test.bfsWithHopCount("129.22.151.208","Network",2);
-
-    }
-
 }

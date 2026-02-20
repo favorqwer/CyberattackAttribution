@@ -49,22 +49,6 @@ public class Event implements Serializable {
     }
 
 
-    public static void main(String[] args){
-        long e= Long.parseLong("156985663353");
-        long es = Long.parseLong("123698745");
-        String s = "1569874563";
-        String ms = "987456321";
-        Event test = new Event("1",s,ms,5758);
-        test.setEndTime("156985663353.123698745");
-        String res = test.getInterval();
-        BigDecimal a =new BigDecimal("156985663353.123698745");
-        BigDecimal b = new BigDecimal("1569874563.987456321");
-        System.out.println(res.toString());
-        System.out.println("b-a = " + a.subtract(b).toString());
-        System.out.println(res.equals(a.subtract(b)));
-
-    }
-
     @Override
     public String toString() {
         return "Event{" +
