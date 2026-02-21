@@ -97,44 +97,6 @@ public class ExperimentRunnerCmd {
         this.logNameFilter = (dir, name) -> logNameFilter.accept(dir, name) && !exclusionSet.contains(name);
     }
 
-    public void run() throws FileNotFoundException {
-
-        File resDir = makeResDir(PathToRes);
-        File[] logs = getLogs(PathToLogs);
-
-        List<Experiment> experiments = new ArrayList<>();
-        PrintStream logStream;
-        try {
-            for (File log : logs) {
-                File[] propertyFiles = log.getParentFile().listFiles((dir, name) ->
-                        (name.split("\\.")[0].equals(log.getName().split("\\.")[0]) || name.startsWith(log.getName().split("\\.")[0] + "-")) && name.endsWith(".property"));
-                for (File propertyFile : propertyFiles) {
-                    experiments.add(new Experiment(log, propertyFile));
-                }
-            }
-
-            for (Experiment e : experiments) {
-                File oneRes = new File(resDir + "/" + e.configFile.getParentFile().getName() + "-" + e.configFile.getName().split("\\.")[0]);
-                if (!oneRes.exists())
-                    oneRes.mkdir();
-
-                File logFile = new File(oneRes.getAbsolutePath() + "/" + e.log.getName().split("\\.")[0] + ".log");
-                logStream = new PrintStream(new FileOutputStream(logFile, true));
-                logging(e, logFile);
-                LogStream ls = new LogStream(System.out, logStream);
-                LogStream lse = new LogStream(System.err, logStream);
-                System.setOut(ls);
-                System.setErr(lse);
-
-                ProcessOneLogCmd.process(oneRes.getAbsolutePath() + "/", "", e.threshold, e.trackOrigin, e.log.getAbsolutePath(), MetaConfig.localIP, e.POI, e.highRP, e.midRP, e.lowRP,
-                        e.log.getName().split("\\.")[0], e.detectionSize, e.getInitial(), e.criticalEdges, mode, do_split);
-                logStream.close();
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
     //Fang: for benign cases: avoid to parse log several times
     public void run2() throws FileNotFoundException {
         //todo 此处固定mode
@@ -186,7 +148,7 @@ public class ExperimentRunnerCmd {
                 logStream.close();
 
                 // 保存JSON格式的日志结果
-                Timestamp currentTimestamp = ExperimentRunnerCMD_19.getTimeStamp();
+                Timestamp currentTimestamp = getTimeStamp();
                 jsonLog.put("Timestamp", currentTimestamp.toString());
                 File entryPointsJsonFile = new File(oneRes.getAbsolutePath() + "/" + e.configFile.getName().split("\\.")[0] + "_json_log.json");
                 FileWriter jsonWriter = new FileWriter(entryPointsJsonFile);
@@ -196,6 +158,12 @@ public class ExperimentRunnerCmd {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    public static Timestamp getTimeStamp() {
+        Calendar calendar = Calendar.getInstance();
+        Timestamp currentTimestamp = new java.sql.Timestamp(calendar.getTime().getTime());
+        return currentTimestamp;
     }
 
     private void logging(Experiment e, File logFile) throws IOException {
