@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Run ExperimentRunnerCmd",
+            "request": "launch",
+            "mainClass": "pagerank.ExperimentRunnerCmd",
+            "args": "./test ./test/result attack.txt",
+            "projectName": "reptracker"
+        }
+    ]
+}
