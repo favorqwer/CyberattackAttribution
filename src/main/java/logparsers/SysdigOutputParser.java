@@ -1,7 +1,11 @@
 package logparsers;
 
 import logparsers.exceptions.InvalidLogFormatException;
-import pagerank.*;
+import pagerank.entity.*;
+import pagerank.provider.*;
+import pagerank.algorithm.*;
+import pagerank.main.*;
+import pagerank.config.*;
 
 import java.io.IOException;
 import java.util.Map;

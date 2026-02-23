@@ -1,0 +1,6 @@
+BackTrack time cost is: 0.091
+After Backtrack vertex number is: 106 edge number: 451
+Edge Merge cost is: 0.008
+After CPR vertex number is: 106 edge number: 164
+Weight Calculation (clusterall) time cost is: 0.304
+Propagation time cost is: 0.001

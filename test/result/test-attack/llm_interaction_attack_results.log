@@ -1,0 +1,135 @@
+================ LLM PROMPT ================
+You are a cybersecurity expert analyzing a provenance graph to track an attack. The graph describes system entities (processes, files, networks) and events (syscalls) between them. The graph might contain noise (normal system activities) alongside the true attack path.
+
+The known attack target is:
+/tmp/stolen_data.tar.gz
+
+Here are the possible attack entry points:
+192.168.122.129:35082->192.168.122.128:8000, /usr/bin/gzip, /bin/sh, /lib/x86_64-linux-gnu/libpcre2-8.so.0
+
+Here is the provenance graph data:
+Nodes:
+- /tmp/.hidden_dir/target_data.txt (Type: EntityNode, Name: /tmp/.hidden_dir/target_data.txt)
+- 21172tar (Type: EntityNode, Name: 21172tar)
+- 192.168.122.129:35082->192.168.122.128:8000 (Type: EntityNode, Name: 192.168.122.129:35082->192.168.122.128:8000)
+- 21163wget (Type: EntityNode, Name: 21163wget)
+- /lib/x86_64-linux-gnu/libpcre2-8.so.0 (Type: EntityNode, Name: /lib/x86_64-linux-gnu/libpcre2-8.so.0)
+- 21171cp (Type: EntityNode, Name: 21171cp)
+- 21167mv (Type: EntityNode, Name: 21167mv)
+- 21170mkdir (Type: EntityNode, Name: 21170mkdir)
+- 20996su (Type: EntityNode, Name: 20996su)
+- 21169.system_service (Type: EntityNode, Name: 21169.system_service)
+- 20997bash (Type: EntityNode, Name: 20997bash)
+- 20998lesspipe (Type: EntityNode, Name: 20998lesspipe)
+- 21168chmod (Type: EntityNode, Name: 21168chmod)
+- 21002dircolors (Type: EntityNode, Name: 21002dircolors)
+- /usr/bin/gzip (Type: EntityNode, Name: /usr/bin/gzip)
+- 21174gzip (Type: EntityNode, Name: 21174gzip)
+- 21173sh (Type: EntityNode, Name: 21173sh)
+- 20999basename (Type: EntityNode, Name: 20999basename)
+- /bin/sh (Type: EntityNode, Name: /bin/sh)
+- /tmp/stolen_data.tar.gz (Type: EntityNode, Name: /tmp/stolen_data.tar.gz)
+
+Edges:
+- EdgeID: 11802 | Source: /tmp/.hidden_dir/target_data.txt | Target: 21172tar | Event: read | Time: 1768985445.189812663
+- EdgeID: 16362 | Source: 192.168.122.129:35082->192.168.122.128:8000 | Target: 21163wget | Event: read | Time: 1768985415.108376476
+- EdgeID: 4358 | Source: /lib/x86_64-linux-gnu/libpcre2-8.so.0 | Target: 21171cp | Event: read | Time: 1768985445.186893358
+- EdgeID: 5327 | Source: /lib/x86_64-linux-gnu/libpcre2-8.so.0 | Target: 21167mv | Event: read | Time: 1768985429.457933670
+- EdgeID: 3960 | Source: /lib/x86_64-linux-gnu/libpcre2-8.so.0 | Target: 21170mkdir | Event: read | Time: 1768985445.184751612
+- EdgeID: 239 | Source: /lib/x86_64-linux-gnu/libpcre2-8.so.0 | Target: 20996su | Event: read | Time: 1768985391.819165458
+- EdgeID: 13620 | Source: /lib/x86_64-linux-gnu/libpcre2-8.so.0 | Target: 21163wget | Event: read | Time: 1768985415.092816377
+- EdgeID: 5070 | Source: /lib/x86_64-linux-gnu/libpcre2-8.so.0 | Target: 21172tar | Event: read | Time: 1768985445.188897252
+- EdgeID: 21231 | Source: 21169.system_service | Target: 21171cp | Event: execve | Time: 1768985445.186067687
+- EdgeID: 21232 | Source: 21169.system_service | Target: 21170mkdir | Event: execve | Time: 1768985445.183981236
+- EdgeID: 21235 | Source: 21169.system_service | Target: 21172tar | Event: execve | Time: 1768985445.188005034
+- EdgeID: 21175 | Source: 21169.system_service | Target: 20997bash | Event: execve | Time: 1768985445.180734288
+- EdgeID: 21170 | Source: 20997bash | Target: 20998lesspipe | Event: execve | Time: 1768985391.828188108
+- EdgeID: 21186 | Source: 20997bash | Target: 21167mv | Event: execve | Time: 1768985429.455001851
+- EdgeID: 21153 | Source: 20997bash | Target: 21169.system_service | Event: execve | Time: 1768985445.180734288
+- EdgeID: 21239 | Source: 20997bash | Target: 20996su | Event: execve | Time: 1768985391.825133224
+- EdgeID: 21203 | Source: 20997bash | Target: 21168chmod | Event: execve | Time: 1768985436.276224371
+- EdgeID: 21198 | Source: 20997bash | Target: 21163wget | Event: execve | Time: 1768985415.088791548
+- EdgeID: 21167 | Source: 20997bash | Target: 21002dircolors | Event: execve | Time: 1768985391.833294304
+- EdgeID: 10047 | Source: /usr/bin/gzip | Target: 21174gzip | Event: execve | Time: 1768985445.190747993
+- EdgeID: 21200 | Source: 21173sh | Target: 21174gzip | Event: execve | Time: 1768985445.190747993
+- EdgeID: 21179 | Source: 21173sh | Target: 21172tar | Event: execve | Time: 1768985445.189728163
+- EdgeID: 21159 | Source: 21168chmod | Target: 20997bash | Event: execve | Time: 1768985436.276224371
+- EdgeID: 21230 | Source: 21172tar | Target: 21173sh | Event: execve | Time: 1768985445.189728163
+- EdgeID: 21207 | Source: 21002dircolors | Target: 20997bash | Event: execve | Time: 1768985391.833294304
+- EdgeID: 21236 | Source: 20998lesspipe | Target: 20999basename | Event: execve | Time: 1768985391.829465328
+- EdgeID: 21217 | Source: 20998lesspipe | Target: 20997bash | Event: execve | Time: 1768985391.828188108
+- EdgeID: 21224 | Source: 20999basename | Target: 20998lesspipe | Event: execve | Time: 1768985391.829465328
+- EdgeID: 9056 | Source: /bin/sh | Target: 21173sh | Event: execve | Time: 1768985445.189728163
+- EdgeID: 21237 | Source: 20996su | Target: 20997bash | Event: execve | Time: 1768985391.825133224
+- EdgeID: 21174 | Source: 21174gzip | Target: 21173sh | Event: execve | Time: 1768985445.190747993
+- EdgeID: 18769 | Source: 192.168.122.129:35082->192.168.122.128:8000 | Target: 21163wget | Event: recvfrom | Time: 1768985415.108371316
+- EdgeID: 21099 | Source: 21171cp | Target: /tmp/.hidden_dir/target_data.txt | Event: write | Time: 1768985445.187413227
+- EdgeID: 20833 | Source: 21174gzip | Target: /tmp/stolen_data.tar.gz | Event: write | Time: 1768985445.193146347
+- EdgeID: 21913 | Source: 21163wget | Target: 192.168.122.129:35082->192.168.122.128:8000 | Event: write | Time: 1768985415.102982964
+
+
+Please analyze the causal relationships and identify the critical path starting from any of the possible attack entry points and ending at the known attack target. This path represents the core attack behavior. Ignore irrelevant noise edges.
+Output the IDs of the edges that belong to the true attack path. Format your output clearly, and at the end of your response, provide a comma-separated list of the kept EdgeIDs enclosed in brackets like this: [EdgeID1, EdgeID2, ...]
+
+================ LLM RESPONSE ================
+To analyze the causal relationships and identify the critical path, we need to start from the possible attack entry points and traverse the graph to the known attack target. The possible attack entry points are:
+
+1. 192.168.122.129:35082->192.168.122.128:8000
+2. /usr/bin/gzip
+3. /bin/sh
+4. /lib/x86_64-linux-gnu/libpcre2-8.so.0
+
+We will start from each entry point and traverse the graph to find the critical path.
+
+**Entry Point 1: 192.168.122.129:35082->192.168.122.128:8000**
+
+* EdgeID: 16362 | Source: 192.168.122.129:35082->192.168.122.128:8000 | Target: 21163wget | Event: read | Time: 1768985415.108376476
+* EdgeID: 18769 | Source: 192.168.122.129:35082->192.168.122.128:8000 | Target: 21163wget | Event: recvfrom | Time: 1768985415.108371316
+* EdgeID: 21198 | Source: 20997bash | Target: 21163wget | Event: execve | Time: 1768985415.088791548
+* EdgeID: 21153 | Source: 20997bash | Target: 21169.system_service | Event: execve | Time: 1768985445.180734288
+* EdgeID: 21235 | Source: 21169.system_service | Target: 21172tar | Event: execve | Time: 1768985445.188005034
+* EdgeID: 21230 | Source: 21172tar | Target: 21173sh | Event: execve | Time: 1768985445.189728163
+* EdgeID: 21200 | Source: 21173sh | Target: 21174gzip | Event: execve | Time: 1768985445.190747993
+* EdgeID: 20833 | Source: 21174gzip | Target: /tmp/stolen_data.tar.gz | Event: write | Time: 1768985445.193146347
+
+**Entry Point 2: /usr/bin/gzip**
+
+* EdgeID: 10047 | Source: /usr/bin/gzip | Target: 21174gzip | Event: execve | Time: 1768985445.190747993
+* EdgeID: 20833 | Source: 21174gzip | Target: /tmp/stolen_data.tar.gz | Event: write | Time: 1768985445.193146347
+
+**Entry Point 3: /bin/sh**
+
+* EdgeID: 9056 | Source: /bin/sh | Target: 21173sh | Event: execve | Time: 1768985445.189728163
+* EdgeID: 21200 | Source: 21173sh | Target: 21174gzip | Event: execve | Time: 1768985445.190747993
+* EdgeID: 20833 | Source: 21174gzip | Target: /tmp/stolen_data.tar.gz | Event: write | Time: 1768985445.193146347
+
+**Entry Point 4: /lib/x86_64-linux-gnu/libpcre2-8.so.0**
+
+This entry point is not directly related to the attack path.
+
+The critical path starting from the entry point 192.168.122.129:35082->192.168.122.128:8000 and ending at the known attack target /tmp/stolen_data.tar.gz is:
+
+[16362, 18769, 21198, 21153, 21235, 21230, 21200, 20833]
+
+The critical path starting from the entry point /usr/bin/gzip and ending at the known attack target /tmp/stolen_data.tar.gz is:
+
+[10047, 20833]
+
+The critical path starting from the entry point /bin/sh and ending at the known attack target /tmp/stolen_data.tar.gz is:
+
+[9056, 21200, 20833]
+
+Combining all the critical paths, we get:
+
+[16362, 18769, 21198, 21153, 21235, 21230, 21200, 10047, 9056, 20833]
+
+However, since we are interested in the causal relationships, we can remove the redundant edges and get the final critical path:
+
+[16362, 18769, 21198, 21153, 21235, 21230, 21200, 20833]
+
+This path represents the core attack behavior.
+
+Output:
+
+[16362, 18769, 21198, 21153, 21235, 21230, 21200, 20833]
+==============================================

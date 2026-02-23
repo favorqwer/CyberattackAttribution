@@ -30,7 +30,7 @@
                 <archive>
                     <manifest>
                         <addClasspath>true</addClasspath>
-                        <mainClass>pagerank.ExperimentRunnerCmd</mainClass>
+                        <mainClass>pagerank.main.ExperimentRunnerCmd</mainClass>
                     </manifest>
                 </archive>
             </configuration>
@@ -40,7 +40,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>pagerank.ExperimentRunnerCmd</mainClass>
+                            <mainClass>pagerank.main.ExperimentRunnerCmd</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>

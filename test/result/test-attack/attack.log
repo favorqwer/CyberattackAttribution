@@ -1,0 +1,363 @@
+backTrackPOIEvent invoked: 192.168.122.129:47160->192.168.122.128:4444
+BackTrack time cost is: 0.113
+After Backtrack vertex number is: 62 edge number: 364
+The size of time window is :10.0(s)
+Edge Merge cost is: 0.005
+After CPR vertex number is: 62 edge number: 90
+setDetection invoked: 0.0
+setSeedSource invoked!
+calculateWeights_ML_dec invoked: true
+computeFinalWeight v1 invoked
+computeFinalWeights invoked!
+Mean vector of group 0 mu0:
+0.33720930232558144 0.32558140095264515 0.3255813953488372 
+
+Mean vector of group 1 mu1:
+0.9893617021276596 0.999999994873112 1.0 
+
+sw is non-singular
+projection vector = swInv*(mu0-mu1)
+projectionVector after self-normalization:
+-0.6120011111492415 -0.32485021378675105 -0.7210596220527091 
+
+projectionVector before adjusting direction:
+-0.6120011111492415 -0.32485021378675105 -0.7210596220527091 
+
+All three dimensions of projection vector are non-positive. Negate the vector.
+projectionVector after adjusting direction:
+0.6120011111492415 0.32485021378675105 0.7210596220527091 
+
+Scaling statistics --- min: 0.1555165538471152 max: 1.6579109469887017 secondMin: 0.15801913738327666 offset: 2.5025835361614512E-5 scaledMin: 1.6657300823177437E-5
+Weight Calculation (clusterall) time cost is: 0.082
+
+After 1 times iteration, the reputation of each vertex is stable
+Propagation time cost is: 0.0
+
+Generating complete provenance graph with all entry points merged, total 5 entries...
+Complete provenance graph generated successfully (5 entries merged):
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/complete_provenance_graph_attack_results.svg
+Vertices: 15   Edges: 28
+Starting LLM Filtering Process...
+Starting LLM graph filtering...
+LLM Interaction log saved to: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\llm_interaction_attack_results.log
+LLM selected 6 edges to keep.
+LLM Filtered graph generated successfully.
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/llm_filtered_graph_attack_results.svg
+Vertices: 6   Edges: 6
+backTrackPOIEvent invoked: 192.168.122.129:47160->192.168.122.128:4444
+BackTrack time cost is: 0.131
+After Backtrack vertex number is: 62 edge number: 364
+The size of time window is :10.0(s)
+Edge Merge cost is: 0.004
+After CPR vertex number is: 62 edge number: 90
+setDetection invoked: 0.0
+setSeedSource invoked!
+calculateWeights_ML_dec invoked: true
+computeFinalWeight v1 invoked
+computeFinalWeights invoked!
+Mean vector of group 0 mu0:
+0.33720930232558144 0.32558140095264515 0.3255813953488372 
+
+Mean vector of group 1 mu1:
+0.9893617021276596 0.999999994873112 1.0 
+
+sw is non-singular
+projection vector = swInv*(mu0-mu1)
+projectionVector after self-normalization:
+-0.6120011111492415 -0.32485021378675105 -0.7210596220527091 
+
+projectionVector before adjusting direction:
+-0.6120011111492415 -0.32485021378675105 -0.7210596220527091 
+
+All three dimensions of projection vector are non-positive. Negate the vector.
+projectionVector after adjusting direction:
+0.6120011111492415 0.32485021378675105 0.7210596220527091 
+
+Scaling statistics --- min: 0.1555165538471152 max: 1.6579109469887017 secondMin: 0.15801913738327666 offset: 2.5025835361614512E-5 scaledMin: 1.6657300823177437E-5
+Weight Calculation (clusterall) time cost is: 0.077
+
+After 1 times iteration, the reputation of each vertex is stable
+Propagation time cost is: 0.001
+
+Generating complete provenance graph with all entry points merged, total 5 entries...
+Complete provenance graph generated successfully (5 entries merged):
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/complete_provenance_graph_attack_results.svg
+Vertices: 15   Edges: 28
+Starting LLM Filtering Process...
+Starting LLM graph filtering...
+LLM API timeout (Attempt 1): Read timed out
+LLM Interaction log saved to: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\llm_interaction_attack_results.log
+LLM selected 7 edges to keep.
+LLM Filtered graph generated successfully.
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/llm_filtered_graph_attack_results.svg
+Vertices: 6   Edges: 7
+backTrackPOIEvent invoked: 192.168.122.129:47160->192.168.122.128:4444
+BackTrack time cost is: 0.135
+After Backtrack vertex number is: 62 edge number: 364
+The size of time window is :10.0(s)
+Edge Merge cost is: 0.004
+After CPR vertex number is: 62 edge number: 90
+setDetection invoked: 0.0
+setSeedSource invoked!
+calculateWeights_ML_dec invoked: true
+computeFinalWeight v1 invoked
+computeFinalWeights invoked!
+Mean vector of group 0 mu0:
+0.9893617021276596 0.999999994873112 1.0 
+
+Mean vector of group 1 mu1:
+0.33720930232558144 0.32558140095264515 0.3255813953488372 
+
+sw is non-singular
+projection vector = swInv*(mu0-mu1)
+projectionVector after self-normalization:
+0.6120011111492399 0.32485021378675194 0.72105962205271 
+
+projectionVector before adjusting direction:
+0.6120011111492399 0.32485021378675194 0.72105962205271 
+
+All three dimensions of projection vector are non-negative. Don't negate the vector.
+projectionVector after adjusting direction:
+0.6120011111492399 0.32485021378675194 0.72105962205271 
+
+Scaling statistics --- min: 0.15551655384711505 max: 1.657910946988702 secondMin: 0.15801913738327678 offset: 2.5025835361617287E-5 scaledMin: 1.6657300823179277E-5
+Weight Calculation (clusterall) time cost is: 0.093
+
+After 1 times iteration, the reputation of each vertex is stable
+Propagation time cost is: 0.001
+
+Generating complete provenance graph with all entry points merged, total 5 entries...
+Complete provenance graph generated successfully (5 entries merged):
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/complete_provenance_graph_attack_results.svg
+Vertices: 15   Edges: 28
+Starting LLM Filtering Process...
+Starting LLM graph filtering...
+LLM Interaction log saved to: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\llm_interaction_attack_results.log
+LLM selected 8 edges to keep.
+LLM Filtered graph generated successfully.
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/llm_filtered_graph_attack_results.svg
+Vertices: 6   Edges: 8
+backTrackPOIEvent invoked: 192.168.122.129:47160->192.168.122.128:4444
+BackTrack time cost is: 0.15
+After Backtrack vertex number is: 62 edge number: 364
+The size of time window is :10.0(s)
+Edge Merge cost is: 0.005
+After CPR vertex number is: 62 edge number: 90
+setDetection invoked: 0.0
+setSeedSource invoked!
+calculateWeights_ML_dec invoked: true
+computeFinalWeight v1 invoked
+computeFinalWeights invoked!
+Mean vector of group 0 mu0:
+0.9893617021276596 0.999999994873112 1.0 
+
+Mean vector of group 1 mu1:
+0.33720930232558144 0.32558140095264515 0.3255813953488372 
+
+sw is non-singular
+projection vector = swInv*(mu0-mu1)
+projectionVector after self-normalization:
+0.6120011111492399 0.32485021378675194 0.72105962205271 
+
+projectionVector before adjusting direction:
+0.6120011111492399 0.32485021378675194 0.72105962205271 
+
+All three dimensions of projection vector are non-negative. Don't negate the vector.
+projectionVector after adjusting direction:
+0.6120011111492399 0.32485021378675194 0.72105962205271 
+
+Scaling statistics --- min: 0.15551655384711505 max: 1.657910946988702 secondMin: 0.15801913738327678 offset: 2.5025835361617287E-5 scaledMin: 1.6657300823179277E-5
+Weight Calculation (clusterall) time cost is: 0.107
+
+After 1 times iteration, the reputation of each vertex is stable
+Propagation time cost is: 0.001
+
+Generating complete provenance graph with all entry points merged, total 5 entries...
+Complete provenance graph generated successfully (5 entries merged):
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/complete_provenance_graph_attack_results.svg
+Vertices: 15   Edges: 28
+backTrackPOIEvent invoked: 192.168.122.129:47160->192.168.122.128:4444
+BackTrack time cost is: 0.12
+After Backtrack vertex number is: 62 edge number: 364
+The size of time window is :10.0(s)
+Edge Merge cost is: 0.005
+After CPR vertex number is: 62 edge number: 90
+setDetection invoked: 0.0
+setSeedSource invoked!
+calculateWeights_ML_dec invoked: true
+computeFinalWeight v1 invoked
+computeFinalWeights invoked!
+Mean vector of group 0 mu0:
+0.33720930232558144 0.32558140095264515 0.3255813953488372 
+
+Mean vector of group 1 mu1:
+0.9893617021276596 0.999999994873112 1.0 
+
+sw is non-singular
+projection vector = swInv*(mu0-mu1)
+projectionVector after self-normalization:
+-0.6120011111492415 -0.32485021378675105 -0.7210596220527091 
+
+projectionVector before adjusting direction:
+-0.6120011111492415 -0.32485021378675105 -0.7210596220527091 
+
+All three dimensions of projection vector are non-positive. Negate the vector.
+projectionVector after adjusting direction:
+0.6120011111492415 0.32485021378675105 0.7210596220527091 
+
+Scaling statistics --- min: 0.1555165538471152 max: 1.6579109469887017 secondMin: 0.15801913738327666 offset: 2.5025835361614512E-5 scaledMin: 1.6657300823177437E-5
+Weight Calculation (clusterall) time cost is: 0.085
+
+After 1 times iteration, the reputation of each vertex is stable
+Propagation time cost is: 0.002
+
+Generating complete provenance graph with all entry points merged, total 5 entries...
+Complete provenance graph generated successfully (5 entries merged):
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/complete_provenance_graph_attack_results.svg
+Vertices: 15   Edges: 28
+Starting LLM Filtering Process...
+Starting LLM graph filtering...
+LLM Interaction log saved to: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\llm_interaction_attack_results.log
+LLM selected 7 edges to keep.
+LLM Filtered graph generated successfully.
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/llm_filtered_graph_attack_results.svg
+Vertices: 6   Edges: 7
+backTrackPOIEvent invoked: 192.168.122.129:47160->192.168.122.128:4444
+BackTrack time cost is: 0.146
+After Backtrack vertex number is: 62 edge number: 364
+The size of time window is :10.0(s)
+Edge Merge cost is: 0.007
+After CPR vertex number is: 62 edge number: 90
+setDetection invoked: 0.0
+setSeedSource invoked!
+calculateWeights_ML_dec invoked: true
+computeFinalWeight v1 invoked
+computeFinalWeights invoked!
+Mean vector of group 0 mu0:
+0.9893617021276596 0.999999994873112 1.0 
+
+Mean vector of group 1 mu1:
+0.33720930232558144 0.32558140095264515 0.3255813953488372 
+
+sw is non-singular
+projection vector = swInv*(mu0-mu1)
+projectionVector after self-normalization:
+0.6120011111492399 0.32485021378675194 0.72105962205271 
+
+projectionVector before adjusting direction:
+0.6120011111492399 0.32485021378675194 0.72105962205271 
+
+All three dimensions of projection vector are non-negative. Don't negate the vector.
+projectionVector after adjusting direction:
+0.6120011111492399 0.32485021378675194 0.72105962205271 
+
+Scaling statistics --- min: 0.15551655384711505 max: 1.657910946988702 secondMin: 0.15801913738327678 offset: 2.5025835361617287E-5 scaledMin: 1.6657300823179277E-5
+Weight Calculation (clusterall) time cost is: 0.136
+
+After 1 times iteration, the reputation of each vertex is stable
+Propagation time cost is: 0.001
+
+Generating complete provenance graph with all entry points merged, total 5 entries...
+Complete provenance graph generated successfully (5 entries merged):
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/complete_provenance_graph_attack_results.svg
+Vertices: 15   Edges: 28
+Starting LLM Filtering Process...
+Starting LLM graph filtering...
+LLM Interaction log saved to: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\llm_interaction_attack_results.log
+LLM selected 9 edges to keep.
+LLM Filtered graph generated successfully.
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/llm_filtered_graph_attack_results.svg
+Vertices: 6   Edges: 9
+backTrackPOIEvent invoked: 192.168.122.129:47160->192.168.122.128:4444
+BackTrack time cost is: 0.131
+After Backtrack vertex number is: 62 edge number: 364
+The size of time window is :10.0(s)
+Edge Merge cost is: 0.004
+After CPR vertex number is: 62 edge number: 90
+setDetection invoked: 0.0
+setSeedSource invoked!
+calculateWeights_ML_dec invoked: true
+computeFinalWeight v1 invoked
+computeFinalWeights invoked!
+Mean vector of group 0 mu0:
+0.9893617021276596 0.999999994873112 1.0 
+
+Mean vector of group 1 mu1:
+0.33720930232558144 0.32558140095264515 0.3255813953488372 
+
+sw is non-singular
+projection vector = swInv*(mu0-mu1)
+projectionVector after self-normalization:
+0.6120011111492399 0.32485021378675194 0.72105962205271 
+
+projectionVector before adjusting direction:
+0.6120011111492399 0.32485021378675194 0.72105962205271 
+
+All three dimensions of projection vector are non-negative. Don't negate the vector.
+projectionVector after adjusting direction:
+0.6120011111492399 0.32485021378675194 0.72105962205271 
+
+Scaling statistics --- min: 0.15551655384711505 max: 1.657910946988702 secondMin: 0.15801913738327678 offset: 2.5025835361617287E-5 scaledMin: 1.6657300823179277E-5
+Weight Calculation (clusterall) time cost is: 0.083
+
+After 1 times iteration, the reputation of each vertex is stable
+Propagation time cost is: 0.0
+
+Generating complete provenance graph with all entry points merged, total 5 entries...
+Complete provenance graph generated successfully (5 entries merged):
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/complete_provenance_graph_attack_results.svg
+Vertices: 15   Edges: 28
+Starting LLM Filtering Process...
+Starting LLM graph filtering...
+LLM API timeout (Attempt 1): Read timed out
+LLM Interaction log saved to: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\llm_interaction_attack_results.log
+LLM selected 9 edges to keep.
+LLM Filtered graph generated successfully.
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/llm_filtered_graph_attack_results.svg
+Vertices: 9   Edges: 9
+backTrackPOIEvent invoked: /tmp/stolen_data.tar.gz
+BackTrack time cost is: 0.091
+After Backtrack vertex number is: 106 edge number: 451
+The size of time window is :10.0(s)
+Edge Merge cost is: 0.008
+After CPR vertex number is: 106 edge number: 164
+setDetection invoked: 0.0
+setSeedSource invoked!
+calculateWeights_ML_dec invoked: true
+computeFinalWeight v1 invoked
+computeFinalWeights invoked!
+Mean vector of group 0 mu0:
+0.978001317114932 0.9939759004746485 0.985776439089692 
+
+Mean vector of group 1 mu1:
+0.29414679851186 0.2777777809951133 0.2861796982167353 
+
+sw is non-singular
+projection vector = swInv*(mu0-mu1)
+projectionVector after self-normalization:
+0.2047314577150986 0.7942552195497116 0.5720521623417661 
+
+projectionVector before adjusting direction:
+0.2047314577150986 0.7942552195497116 0.5720521623417661 
+
+All three dimensions of projection vector are non-negative. Don't negate the vector.
+projectionVector after adjusting direction:
+0.2047314577150986 0.7942552195497116 0.5720521623417661 
+
+Scaling statistics --- min: 0.07063446970953166 max: 1.5710388396065764 secondMin: 0.08572717774788272 offset: 1.5092708038351056E-4 scaledMin: 1.0059093629130586E-4
+Weight Calculation (clusterall) time cost is: 0.304
+
+After 1 times iteration, the reputation of each vertex is stable
+Propagation time cost is: 0.001
+
+Generating complete provenance graph with all entry points merged, total 4 entries...
+Complete provenance graph generated successfully (4 entries merged):
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/complete_provenance_graph_attack_results.svg
+Vertices: 20   Edges: 35
+Starting LLM Filtering Process...
+Starting LLM graph filtering...
+LLM Interaction log saved to: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\llm_interaction_attack_results.log
+LLM selected 8 edges to keep.
+LLM Filtered graph generated successfully.
+File: C:\Users\Favor\Desktop\depimpact_source\.\test\result\test-attack\results/llm_filtered_graph_attack_results.svg
+Vertices: 8   Edges: 8

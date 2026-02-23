@@ -5,8 +5,12 @@ import logparsers.exceptions.UnknownEventException;
 import logparsers.systemcalls.Fingerprint;
 import logparsers.systemcalls.SystemCall;
 import logparsers.systemcalls.SystemCallFactory;
-import pagerank.Process;
-import pagerank.*;
+import pagerank.entity.Process;
+import pagerank.entity.*;
+import pagerank.provider.*;
+import pagerank.algorithm.*;
+import pagerank.main.*;
+import pagerank.config.*;
 
 import java.io.BufferedReader;
 import java.io.File;

@@ -1,0 +1,59 @@
+<svg width="544px" height="222px"
+ viewBox="0.00 0.00 543.96 221.60" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1.0 1.0) rotate(0.0) translate(4.0 217.6)">
+<title>G</title>
+<polygon fill="white" stroke="transparent" points="-4,4 -4,-217.6 539.96,-217.6 539.96,4 -4,4"/>
+<!-- 2120 -->
+<g id="node1" class="node">
+<title>2120</title>
+<ellipse fill="none" stroke="black" cx="191.96" cy="-195.6" rx="80.54" ry="18"/>
+<text text-anchor="middle" x="191.96" y="-191.4" font-family="Times,serif" font-size="14.00">/usr/bin/gzip [0.0]</text>
+</g>
+<!-- 2121 -->
+<g id="node2" class="node">
+<title>2121</title>
+<polygon fill="none" stroke="black" points="244.89,-124.8 139.04,-124.8 139.04,-88.8 244.89,-88.8 244.89,-124.8"/>
+<text text-anchor="middle" x="191.96" y="-102.6" font-family="Times,serif" font-size="14.00">21174gzip [0.0]</text>
+</g>
+<!-- 2120&#45;&gt;2121 -->
+<g id="edge1" class="edge">
+<title>2120&#45;&gt;2121</title>
+<path fill="none" stroke="black" d="M191.96,-177.45C191.96,-165.32 191.96,-148.82 191.96,-134.92"/>
+<polygon fill="black" stroke="black" points="195.46,-134.91 191.96,-124.91 188.46,-134.91 195.46,-134.91"/>
+<text text-anchor="middle" x="223.46" y="-147" font-family="Times,serif" font-size="14.00">10047 0.99</text>
+</g>
+<!-- 2118 -->
+<g id="node3" class="node">
+<title>2118</title>
+<polygon fill="none" stroke="black" points="145.73,-36 52.2,-36 52.2,0 145.73,0 145.73,-36"/>
+<text text-anchor="middle" x="98.96" y="-13.8" font-family="Times,serif" font-size="14.00">21173sh [0.0]</text>
+</g>
+<!-- 2121&#45;&gt;2118 -->
+<g id="edge3" class="edge">
+<title>2121&#45;&gt;2118</title>
+<path fill="none" stroke="black" d="M138.99,-103.23C89.81,-99.61 21.74,-91 4.96,-70.8 -10.58,-52.08 14.2,-38.98 42.21,-30.63"/>
+<polygon fill="black" stroke="black" points="43.48,-33.91 52.19,-27.88 41.62,-27.16 43.48,-33.91"/>
+<text text-anchor="middle" x="85.46" y="-58.2" font-family="Times,serif" font-size="14.00">21174 0.9679287776355111</text>
+</g>
+<!-- 2116 -->
+<g id="node4" class="node">
+<title>2116</title>
+<ellipse fill="none" stroke="black" cx="375.96" cy="-18" rx="120.41" ry="18"/>
+<text text-anchor="middle" x="375.96" y="-13.8" font-family="Times,serif" font-size="14.00">/tmp/stolen_data.tar.gz [0.0]</text>
+</g>
+<!-- 2121&#45;&gt;2116 -->
+<g id="edge4" class="edge">
+<title>2121&#45;&gt;2116</title>
+<path fill="none" stroke="black" d="M244.93,-104.49C277.18,-101.27 317.67,-92.67 346.96,-70.8 355.42,-64.49 361.76,-54.93 366.31,-45.74"/>
+<polygon fill="black" stroke="black" points="369.58,-47.01 370.42,-36.45 363.18,-44.17 369.58,-47.01"/>
+<text text-anchor="middle" x="448.46" y="-58.2" font-family="Times,serif" font-size="14.00">20833 0.022071222364488892</text>
+</g>
+<!-- 2118&#45;&gt;2121 -->
+<g id="edge2" class="edge">
+<title>2118&#45;&gt;2121</title>
+<path fill="none" stroke="black" d="M145.74,-36.11C154.58,-40.89 163.17,-46.81 169.96,-54 176.6,-61.02 181.39,-70.33 184.77,-79.13"/>
+<polygon fill="black" stroke="black" points="181.48,-80.35 188.01,-88.69 188.11,-78.1 181.48,-80.35"/>
+<text text-anchor="middle" x="262.46" y="-58.2" font-family="Times,serif" font-size="14.00">21200 0.6187562522385359</text>
+</g>
+</g>
+</svg>

@@ -1,6 +1,6 @@
 package logparsers.systemcalls;
 
-import pagerank.Entity;
+import pagerank.entity.Entity;
 
 import java.util.ArrayList;
 import java.util.List;

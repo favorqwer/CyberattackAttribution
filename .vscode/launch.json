@@ -5,7 +5,7 @@
             "type": "java",
             "name": "Run ExperimentRunnerCmd",
             "request": "launch",
-            "mainClass": "pagerank.ExperimentRunnerCmd",
+            "mainClass": "pagerank.main.ExperimentRunnerCmd",
             "args": "./test ./test/result attack.txt",
             "projectName": "reptracker"
         }
