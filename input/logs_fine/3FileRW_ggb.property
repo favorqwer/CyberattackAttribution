@@ -1,4 +1,0 @@
-POI = /home/lcl/target
-highRP = /home/lcl/FileA.zip,/home/lcl/FileB.zip
-lowRP = /home/lcl/FileC.zip
-detectionSize = 418768179 

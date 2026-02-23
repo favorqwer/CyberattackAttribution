@@ -1,0 +1,35 @@
+# 改进建议及实施计划：利用LLM过滤最终溯源图
+
+当前系统在 [ProcessOneLogCMD_19.java](file:///c:/Users/Favor/Desktop/depimpact_source/src/main/java/pagerank/ProcessOneLogCMD_19.java) 的 [filter_graph_by_forward_category](file:///c:/Users/Favor/Desktop/depimpact_source/src/main/java/pagerank/ProcessOneLogCMD_19.java#412-473) 方法中输出了聚合所有候选入口点的完整溯源图 (`complete_provenance_graph_...`)，但图中可能依然包含大量与真实攻击路径无关的噪音边。我们计划在此时引入一个大语言模型（LLM）过滤模块对输出图进行最后一步清洗。
+
+## User Review Required
+
+> [!IMPORTANT]
+> **需要您的确认**：在此实施前，请问您打算使用哪种 LLM (例如 OpenAI 的 GPT-4o, Anthropic Claude, 还是本地部署的模型，如通过 Ollama/vLLM 调用的 Qwen/Llama)？这会影响我们在 Java 中集成 HTTP 请求的代码结构。
+> **建议**：我们可以实现一个基于标准 OpenAI Chat Completions API 格式的请求工具类，这样只要是支持 OpenAI 格式的 API（不管是官方的还是本地中转的）都可以通用。请告诉我您的 API Base URL, Model Name, 以及 API Key 是否配置在环境变量中（或者我们可以硬编码在一个配置文件里）。
+
+## Proposed Changes
+
+### pagerank component
+
+#### [NEW] [LLMGraphFilter.java](file:///c:/Users/Favor/Desktop/depimpact_source/src/main/java/pagerank/LLMGraphFilter.java)
+- 包含序列化核心逻辑，将 `DirectedPseudograph<EntityNode, EventEdge>` 中节点的签名(Signature)和事件的上下文(Type, Event, 时间等)转化为易于理解的 JSON 或文本列表格式。
+- 构建具体的Prompt（明确给LLM提供POI作为受到攻击的目标，给出来自前向分析的入口点作为可疑来源，要求LLM分析系统调用行为模式并返回有意义路径上的 Edge IDs）。
+- 调用远程或本地 LLM API，获取判断结果，据此裁剪图并返回精简版的图对象。
+
+#### [MODIFY] [ProcessOneLogCMD_19.java](file:///c:/Users/Favor/Desktop/depimpact_source/src/main/java/pagerank/ProcessOneLogCMD_19.java)
+- 在生成 `complete_provenance_graph_...` 的同级代码处，增加对 `LLMGraphFilter` 的调用。
+- 接收过滤后的图对象，并使用 `IterateGraph` 将其输出为 `llm_filtered_graph_...` 的 dot 和 svg 文件，以便于人工直观地分析其过滤效果。
+
+### 外部依赖
+若使用简单的 HTTP 请求，考虑到低版本/普适性兼容，可使用 `HttpURLConnection`，直接利用现有的 `json-simple` 库构造/解析 JSON 数据，从而避免引入不必要的第三方依赖（如 OkHttp），保持编译的干净简单。
+
+## Verification Plan
+
+### Automated Tests
+- 编译并执行 [ExperimentRunnerCmd](file:///c:/Users/Favor/Desktop/depimpact_source/src/main/java/pagerank/ExperimentRunnerCmd.java#20-253)。由于用户提供的是源代码复现项目，可以通过预留的一条正常日志或者测试用例来运行命令行评估结果。
+- 监控控制台日志，确认在 `Complete provenance graph generated successfully` 后，`LLMGraphFilter` 能被正确触发并与 LLM 端点联通。
+
+### Manual Verification
+- 打开工作目录的输出文件夹，对比原始 `complete_provenance_graph_...svg` 和新的 `llm_filtered_graph_...svg` 图像。
+- 人工验证 POI 和关键入口点是否依然联通，并且周边分支的噪音边是否被明显剔除。

@@ -1,3 +1,0 @@
-#copy good.zip from USB drive to /home/lcl/target.zip then copy bad.zip to overwite it.
-
-/home/lcl/target.zip

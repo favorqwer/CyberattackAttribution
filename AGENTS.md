@@ -1,244 +1,159 @@
-# AGENTS.md - Developer Guide for depimpact_source
+# DepImpact - 网络攻击溯源系统
 
-## 项目背景
+## 项目概述
 
-### 论文基础
+本项目复现了论文 **"Back-Propagating System Dependency Impact for Attack Investigation"** 中的网络攻击溯源系统。该系统通过分析系统审计日志（如Sysdig），构建进程、文件、网络实体之间的依赖图，并使用后向影响传播算法识别攻击入口点。
 
-本项目基于 **Back-Propagating System Dependency Impact for Attack Investigation** 论文中的系统进行改进。原始论文提出了一种基于图的后向传播攻击溯源方法，其核心思想是：
+## 核心概念
 
-1. **系统依赖图构建**：将系统日志（如sysdig日志）解析为溯源图（Provenance Graph），节点代表实体（进程、文件、网络连接），边代表事件关系
-2. **异常检测点（POI）**：用户指定攻击中已被检测到的异常点作为起点
-3. **后向传播分析**：使用类似PageRank的迭代算法，从POI出发沿着依赖边向后追溯，找出攻击的根源
-4. **权重计算**：使用多个特征（时间、数据流、节点度数/结构）计算边的权重，指导溯源方向
+### 1. 实体类型 (Entity Types)
+- **Process (进程)**: 由 `Process.java` 表示，标识系统进程
+- **File (文件)**: 由 `FileEntity.java` 表示，标识文件路径
+- **Network (网络)**: 由 `NetworkEntity.java` 表示，标识网络连接 (IP:Port -> IP:Port)
 
-### 核心概念
+### 2. 事件类型 (Event Types)
+系统依赖图中的边（事件）分为五种：
+- **PtoP (Process to Process)**: 进程间通信 (execve系统调用)
+- **PtoF (Process to File)**: 进程写文件 (write/writev系统调用)
+- **FtoP (File to Process)**: 文件被进程读取 (read/readv系统调用)
+- **PtoN (Process to Network)**: 进程发起网络连接 (sendto/write/sendmsg系统调用)
+- **NtoP (Network to Process)**: 网络连接被接收 (read/recvmsg/recvfrom系统调用)
 
-- **Entity（实体）**：系统中的进程(Process)、文件(File)、网络连接(Network)
-- **Event（事件）**：实体之间的交互，如进程读写文件、进程间通信、网络连接等
-- **POI（Point of Interest）**：已知的攻击检测点，作为溯源的起点
-- **Entry Point**：通过后向传播分析确定的可能攻击入口点
-- **边权重**：决定溯源方向的概率分布，权重越高的边越可能是攻击路径
+### 3. 核心算法流程
 
-### 事件类型
-
-系统支持5种事件类型（定义在`pagerank/`包中）：
-- **PtoF (Process to File)**：进程操作文件
-- **FtoP (File to Process)**：文件触发进程（如执行脚本）
-- **PtoP (Process to Process)**：进程间通信
-- **PtoN (Process to Network)**：进程发起网络连接
-- **NtoP (Network to Process)**：网络连接到达进程
-
-### 原始系统特征
-
-原始系统使用三个特征计算边权重：
-1. **时间权重(Time Weight)**：基于事件发生的时间顺序，高权重边发生在POI之前不久
-2. **数据流权重(Amount Weight)**：基于传输的数据量，数据量大的边权重更高
-3. **结构权重(Structure Weight)**：基于节点度数，连接多个节点的边权重更高
-
-## 项目改进
-
-本项目在原始论文基础上进行了两项重要改进：
-
-### 改进1：异常评分特征
-
-**改进文件**：`BackwardPropagate_pf.java`、`EventEdge.java`、`SysdigOutputParserNoRegex.java`
-
-**改进内容**：
-- 在日志解析阶段从原始日志中提取`anomaly_score`字段（由外部异常检测系统生成）
-- 将异常评分作为第四个特征纳入边权重计算
-- 权重计算公式（正常情况）：
-  ```
-  weight = 0.25*timeWeight + 0.25*structureWeight + 0.25*amountWeight + 0.25*anomalyWeight
-  ```
-- 数据量极小时的权重计算：
-  ```
-  weight = 0.33*timeWeight + 0.33*structureWeight + 0.34*anomalyWeight
-  ```
-
-**异常分数来源**：
-- 日志格式：sysdig日志的第12字段，字段名为`anomaly_score`
-- 日志解析器通过`extractAnomalyScore()`方法提取（见`SysdigOutputParserNoRegex.java:79-94`）
-
-**效果**：使溯源算法能够优先追踪具有异常行为的边，提高攻击路径的准确性。
-
-### 改进2：LLM语义过滤
-
-**改进文件**：`LLMGraphUtils.java`、`ProcessOneLogCMD_19.java`
-
-**改进内容**：
-- 在完成图的后向传播分析后，生成完整的溯源图
-- 使用LLM对溯源图进行语义分析，过除噪音边，保留与攻击相关的关键路径
-- 过滤流程：
-  1. 将图序列化为JSON格式（包含边ID、操作类型、源/目标实体、时间戳）
-  2. 将JSON发送给LLM进行分析
-  3. LLM返回需要保留的边ID列表
-  4. 根据ID列表过滤图中边，删除不相关边和孤立节点
-
-**关键设计**：
-- 发送给LLM的JSON不包含异常分数和数据量，强制LLM仅基于语义（进程名、文件名）判断
-- 保留高异常评分边的可视化标注（用于结果验证）
-
-**效果**：大幅精简溯源图，便于安全分析人员人工审查和理解攻击路径。
-
-## Project Overview
-
-This is a Java Maven project (Spring Boot 2.7.18 based) for dependency impact analysis using graph-based algorithms. The main entry point is `pagerank.ExperimentRunnerCmd`.
-
-## Build Commands
-
-```bash
-# Compile the project
-mvn clean compile
-
-# Build JAR (includes dependencies)
-mvn clean package
-
-# Run the application
-java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar <log_path> <result_path> <log_names>
+```
+日志文件 → 解析事件 → 构建依赖图 → BackTrack后向切片 → CPR因果压缩 → 权重计算 → PageRank传播 → 识别入口点
 ```
 
-## Test Commands
+#### Step 1: 图构建 (GetGraph.java)
+- 从Sysdig日志中解析系统调用事件
+- 根据事件类型创建5种事件边
+- 构建有向伪图 (DirectedPseudograph<EntityNode, EventEdge>)
 
-```bash
-# Run all tests
-mvn test
+#### Step 2: BackTrack后向切片 (BackTrack.java)
+- 从检测点(POI - Point of Interest)开始
+- 反向遍历，只保留能够到达POI的节点和边
+- 得到因果子图，大幅减少分析规模
 
-# Run a specific test class
-mvn test -Dtest=ClassName
+#### Step 3: 因果保持压缩 (CausalityPreserve.java)
+- 合并时间窗口内(默认10秒)相同主体和客体的连续操作
+- 在保持因果关系的前提下压缩图规模
 
-# Run a specific test method
-mvn test -Dtest=ClassName#methodName
+#### Step 4: 特征权重计算 (BackwardPropagate.java)
+系统支持多种权重计算模式(通过mode参数选择):
+- `nonml`: 手动权重分配 (时间0.5 + 结构0.5，或 时间0.1 + 结构0.4 + 数据量0.5)
+- `clusterall`: 全局聚类 + FDA降维
+- `clusterlocal`: 局部聚类 + FDA降维 (论文核心方法)
+- `nonoutlier`: 排除离群点后聚类
+- `localtime`: 仅时间权重
+- `localamount`: 仅数据量权重
+- `localstruct`: 仅结构权重(扇出)
+- `fanout`: 扇出权重
+- `nonmlrandom`: 随机权重(基线对比)
 
-# Run with verbose output
-mvn test -X
-```
+#### Step 5: PageRank式传播 (BackwardPropagate_pf.java)
+- 初始化: 高可信实体(highRP)设为1.0，低可信实体(lowRP)设为0.0
+- 反向迭代传播恶意度分数
+- 使用阻尼因子(damping factor = 0.85)
 
-## Project Structure
+#### Step 6: 入口点识别
+- 获取得分最高的节点作为候选入口点
+- 结合前向分析验证因果路径
+
+## 项目结构
 
 ```
 src/main/java/
-├── pagerank/           # Main application logic
-│   ├── ExperimentRunnerCmd.java   # CLI entry point
-│   ├── IterateGraph.java         # Graph iteration
-│   ├── BackwardPropagate.java    # Backward analysis
-│   ├── ForwardAnalysis.java      # Forward analysis
-│   ├── Entity.java               # Entity model
-│   ├── EntityNode.java           # Graph node
-│   ├── Event.java / EventEdge.java   # Event models
-│   └── [EventTypes].java         # FtoPEvent, PtoFEvent, etc.
-└── logparsers/         # Log parsing utilities
-    ├── SysdigOutputParser.java
-    └── systemcalls/    # System call handling
-
-test/                   # Test data (not JUnit tests)
+├── pagerank/                    # 核心算法
+│   ├── Entity.java              # 实体基类
+│   ├── EntityNode.java          # 图节点(封装Process/File/Network)
+│   ├── EventEdge.java           # 图边(事件)
+│   ├── GetGraph.java            # 从日志构建依赖图
+│   ├── BackTrack.java           # 后向切片算法
+│   ├── CausalityPreserve.java   # 因果保持压缩
+│   ├── BackwardPropagate.java   # 权重计算(旧版)
+│   ├── BackwardPropagate_pf.java # 权重计算 + PageRank传播
+│   ├── ForwardAnalysis.java     # 前向分析
+│   ├── IterateGraph.java        # 图遍历和导出
+│   ├── ExperimentRunnerCmd.java # 主入口(命令行)
+│   ├── Experiment.java          # 实验配置解析
+│   ├── MetaConfig.java          # 系统配置(本地IP、系统调用白名单)
+│   └── ...
+└── logparsers/                  # 日志解析
+    ├── SysdigOutputParser.java  # Sysdig日志解析器
+    └── systemcalls/             # 系统调用定义
 ```
 
-## Code Style Guidelines
+## 输入格式
 
-### Naming Conventions
+### 1. 日志文件 (.txt)
+Sysdig格式的系统审计日志，包含系统调用事件。
 
-- **Classes**: PascalCase (e.g., `ExperimentRunnerCmd`, `BackwardPropagate`)
-- **Methods**: camelCase (e.g., `calculateWeights`, `setDetectionSize`)
-- **Variables**: camelCase (e.g., `graphFromLog`, `PathToLogs`, `dumpingFactor`)
-- **Constants**: UPPER_SNAKE_CASE (e.g., `POITime` uses camel but treat as constant)
-- **Packages**: lowercase (e.g., `pagerank`, `logparsers`)
+### 2. 配置文件 (.property)
+与日志同名的配置文件，以 `.backward` 结尾表示反向溯源分析。
 
-### Formatting
-
-- **Indentation**: 4 spaces (no tabs)
-- **Line length**: No strict limit, but prefer <120 chars
-- **Braces**: Same-line opening brace for classes/methods
-- **Imports**: Grouped by: java.*, org.*, other libraries, then static imports
-- **No automated formatter**: Manually format code to match existing style
-
-### Types
-
-- Use primitive types where possible (`int`, `double`, `long`)
-- Use wrapper classes for collections (`Long`, `Double` for autoboxing)
-- Collections: `Map<K,V>`, `Set<T>`, `List<T>` over concrete implementations
-- Use `HashMap`, `ArrayList` for implementation when instantiating
-
-### Visibility
-
-- Default (package-private) is acceptable for internal classes
-- Use `public` for API classes and methods
-- Use `private` for internal state
-
-### Error Handling
-
-- Use try-catch for expected exceptions
-- Catch specific exceptions over generic `Exception`
-- Use `e.printStackTrace()` for logging errors (existing pattern)
-- Throw custom exceptions from `logparsers/exceptions/` for parsing errors
-
-### Code Patterns
-
-```java
-// Preferred class structure
-package pagerank;
-
-import java.io.*;
-import java.util.*;
-import org.jgrapht.graph.DirectedPseudograph;
-
-public class ClassName {
-    // Fields first (package-private)
-    DirectedPseudograph<EntityNode, EventEdge> graph;
-    Map<Long, Double> weights;
-    
-    // Constructor
-    public ClassName(DirectedPseudograph<EntityNode, EventEdge> input) {
-        this.graph = input;
-        this.weights = new HashMap<>();
-    }
-    
-    // Public methods
-    public void methodName() {
-        // implementation
-    }
-    
-    // Private methods
-    private void helperMethod() {
-        // implementation
-    }
-}
+配置项说明:
+```properties
+POI = /tmp/malicious_file.txt          # 检测点(恶意文件/网络连接)
+highRP = 192.168.1.1:80->...,/bin/ls  # 高可信实体(系统进程/正常IP)
+lowRP = 192.168.1.100:44444->...       # 低可信实体(可疑IP/临时文件)
+midRP = /lib64/libc.so.6,...            # 中可信实体(可选，扩展白名单)
+detectionSize = 1024                    # 检测到的数据量
+criticalEdge = edge1;edge2              # 关键边(用于评估)
 ```
 
-### Java Version
-
-- Target: Java 8 (maven.compiler.source/target = 8)
-- Avoid features requiring Java 9+
-
-### Logging
-
-- Use `System.out.println()` for general output
-- Use `System.err.println()` for errors
-- Consider using `java.util.logging` for complex scenarios
-
-## Running the Application
+## 运行方式
 
 ```bash
-# Example usage
-mvn compile
-java -cp target/classes:target/dependency/* pagerank.ExperimentRunnerCmd ./test ./test/result attack.txt
+# 编译项目
+mvn clean package
+
+# 运行实验
+# 参数: <日志路径> <结果目录> <日志文件名>
+java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar \
+    ./input/logs_fine \
+    ./output \
+    wget.txt
 ```
 
-Required files:
-- Log file: `attack.txt`
-- Property file: `attack.backward.property` (same directory)
+或在IDE中运行 `pagerank.ExperimentRunnerCmd` 类，参数格式:
+```
+<日志路径> <结果目录> <日志文件名(多个用分号分隔)>
+```
 
-## Dependencies
+## 输出结果
 
-Key libraries (see pom.xml):
-- Spring Boot 2.7.18
-- JGraPhT 1.1.0 (graph algorithms)
-- GraalVM JS 22.3.2 (JavaScript engine)
-- Apache Commons (lang3, math3)
-- JSON Simple
-- JUnit 5 (testing)
+运行后在结果目录生成:
+- `*_stats`: 各阶段节点/边数量、时间消耗统计
+- `BackTrack_*.dot`: 后向切片子图
+- `AfterCPR_*.dot`: CPR压缩后的图
+- `Weight_*.dot`: 带权重的最终图
+- `*_entry_points.json`: 识别出的入口点列表
+- `results/` 目录: 完整的溯源图(.dot + .svg)
 
-## Notes
+## 关键配置 (MetaConfig.java)
 
-- No linter/formatter configured - follow existing code style manually
-- Some code contains Chinese comments - preserve them
-- The codebase uses graph-based dependency tracking with PageRank-like algorithms
+```java
+localIP = {"127.0.0.1"}           # 本地IP地址
+ptopSystemCall = {"execve"}        # P2P事件系统调用
+ptofSystemCall = {"write","writev"} # P2F事件系统调用
+ftopSystemCall = {"read","readv"}  # F2P事件系统调用
+ptonSystemCall = {"sendto","write",...} # P2N事件系统调用
+ntopSystemCall = {"read","recvmsg",...} # N2P事件系统调用
+```
+
+## 依赖库
+
+- **JGraphT**: 图数据结构
+- **Apache Commons Math3**: 聚类、降维(FDA)
+- **Graphviz-Java**: 图可视化
+- **JSON-Simple**: JSON处理
+- **Spring Boot**: 项目框架
+
+## 扩展开发
+
+如需修改核心算法:
+1. 权重计算: 修改 `BackwardPropagate_pf.java` 中的 `calculateWeights_*` 方法
+2. 传播算法: 修改 `PageRankIterationBackward` 方法
+3. 入口点识别: 修改 `getForwardStarts` 和 `getCandidateEntryPoint` 方法
+4. 添加新事件类型: 在 `EventEdge.java` 添加构造函数，在 `GetGraph.java` 添加处理逻辑
