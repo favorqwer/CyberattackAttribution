@@ -16,9 +16,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 基于大语言模型 (LLM) 的溯源图过滤模块。
- * 该类负责将系统生成的溯源图转化为文本 Prompt，并调用大语言模型 API（如 OpenAI, NVIDIA DeepSeek 等）
- * 来分析核心的因果关系，并提取出最有可能属于真实攻击路径上的边，从而过滤除掉背景噪音点和边。
+ * LLMGraphFilter 模块：利用大语言模型 (LLM) 进行溯源图降噪和路径提取。
+ * 1. 将图结构序列化为 LLM 可读的文本（Nodes & Edges）。
+ * 2. 构建包含安全上下文的 Prompt，引导 LLM 识别攻击因果链。
+ * 3. 调用外部 API（支持 OpenAI 格式）获取分析结果。
+ * 4. 解析结果并重建一个精简的、仅包含关键攻击步骤的子图。
  */
 public class LLMGraphFilter {
 
@@ -33,7 +35,7 @@ public class LLMGraphFilter {
     /**
      * 加载 LLM 配置文件 (llm.properties)。
      * 包含对 base_url、api_key 以及对应模型名称的读取。
-     * 如果文件不存在或发生读取异常，将降级使用空值处理。
+     * 如果文件不存在或发生读取异常，后续逻辑将通过判空跳过 LLM 过滤
      */
     private void loadConfig() {
         Properties prop = new Properties();
@@ -54,7 +56,7 @@ public class LLMGraphFilter {
      * 核心过滤方法。
      * 调用该方法会依次执行图表序列化、Prompt 构建、LLM 远端请求、以及根据返回结果重建图表的过程。
      * 将提示词和 LLM 的原始回复日志保存在指定路径的文件中。
-     * 
+     *
      * @param originalGraph 原始由系统前/后向分析生成的完整溯源图
      * @param entryPoints   可能的攻击入口点列表
      * @param poiEvent      系统输入的POI事件（警报节点），作为攻击路径的终点
@@ -66,11 +68,20 @@ public class LLMGraphFilter {
             List<String> entryPoints,
             String poiEvent,
             String logFilePath) {
+        // 1. 安全检查：如果配置无效，则不执行过滤，直接返回原图，确保程序鲁棒性
+        if (this.baseUrl == null || this.baseUrl.trim().isEmpty() ||
+                this.apiKey == null || this.apiKey.trim().isEmpty() ||
+                this.modelName == null || this.modelName.trim().isEmpty()) {
+            System.err.println(
+                    "LLM API configuration is missing or incomplete. Skipping LLM filtering and returning the original graph.");
+            return originalGraph;
+        }
 
         System.out.println("Starting LLM graph filtering...");
+        // 2. 将图对象转换为文本描述格式
         String graphText = serializeGraph(originalGraph);
 
-        // 排查和剔除可能的起点中等同于 POI（终点） 的干扰项
+        // 3. 数据预处理：如果入口点和终点是同一个，则移除该入口点以防干扰 AI 判断
         List<String> filteredEntryPoints = new ArrayList<>();
         for (String entry : entryPoints) {
             if (!entry.equals(poiEvent)) {
@@ -78,11 +89,13 @@ public class LLMGraphFilter {
             }
         }
 
+        // 4. 生成 Prompt：告诉 AI 它是专家，给它数据，并要求它输出特定格式的结果
         String prompt = buildPrompt(graphText, filteredEntryPoints, poiEvent);
 
+        // 5. 联网调用 LLM：获取模型对攻击路径的判定结果
         String llmResponse = callLLMAPI(prompt);
 
-        // 记录 Prompt 和 LLM Response 到文件
+        // 6. 日志记录：将交互记录存入文件，方便 Debug 和复盘
         writeLLMLog(logFilePath, prompt, llmResponse);
 
         if (llmResponse == null || llmResponse.isEmpty()) {
@@ -90,9 +103,11 @@ public class LLMGraphFilter {
             return originalGraph;
         }
 
+        // 7. 解析响应：从 AI 的自由文本回复中利用正则提取出需要保留的 Edge ID
         Set<String> keptEdgeIds = extractEdgeIdsFromResponse(llmResponse);
         System.out.println("LLM selected " + keptEdgeIds.size() + " edges to keep.");
 
+        // 8. 重建图：根据 AI 筛选出的边 ID，从原图中抽取出子图
         return buildFilteredGraph(originalGraph, keptEdgeIds);
     }
 
@@ -116,9 +131,10 @@ public class LLMGraphFilter {
     }
 
     /**
-     * 将图形数据结构序列化成便于 LLM 理解的纯文本格式。
-     * 首先列出所有图中的节点对象（包含签名和节点类型），
-     * 随后列出图中所有的边对象（包含边的唯一 ID、起点、终点、系统事件类型和发生时间）。
+     * 序列化方法：将内存中的图结构转换为结构化的纯文本。
+     * LLM 的理解能力受上下文长度限制，因此只保留关键字段：
+     * - Nodes: 实体签名和类型。
+     * - Edges: 唯一ID、起点、终点、系统调用类型、时间戳。
      */
     private String serializeGraph(DirectedPseudograph<EntityNode, EventEdge> graph) {
         StringBuilder sb = new StringBuilder();
@@ -163,93 +179,150 @@ public class LLMGraphFilter {
     }
 
     /**
-     * 调用符合 OpenAI 格式规范的 LLM API 端点发送 Prompt，并提取并返回模型的文本回复内容。
-     * 支持自动补齐 "/chat/completions" 路由。
-     * 
-     * @param prompt 提交给模型的完整提示词文本
-     * @return LLM 返还的文本数据。如果发生网络请求失败或解析出错则返回 null
+     * 发起网络请求，调用远程 LLM API。
+     * 实现细节：
+     * - 自动补齐 OpenAI 标准的 /chat/completions 路由。
+     * - 设置了连接和读取超时。
+     * - 实现了指数退避（Exponential Backoff）的重试机制。
      */
     @SuppressWarnings("unchecked")
     private String callLLMAPI(String prompt) {
-        try {
-            // NVIDIA deepseek endpoint may be exact or missing chat/completions depending
-            // on base url format
-            String endpoint = baseUrl;
-            if (!endpoint.endsWith("/chat/completions")) {
-                if (endpoint.endsWith("/")) {
-                    endpoint += "chat/completions";
-                } else {
-                    endpoint += "/chat/completions";
-                }
-            }
-            URL url = new URL(endpoint);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-            conn.setDoOutput(true);
+        int maxRetries = 3;// 最大重试次数
+        int delayMs = 2000;// 基础延迟时间
 
-            JSONObject message = new JSONObject();
-            message.put("role", "user");
-            message.put("content", prompt);
-
-            JSONArray messages = new JSONArray();
-            messages.add(message);
-
-            JSONObject requestBody = new JSONObject();
-            requestBody.put("model", modelName);
-            requestBody.put("messages", messages);
-            requestBody.put("temperature", 0.1);
-            requestBody.put("max_tokens", 4096);
-
-            try (OutputStream os = conn.getOutputStream()) {
-                byte[] input = requestBody.toJSONString().getBytes("utf-8");
-                os.write(input, 0, input.length);
-            }
-
-            int responseCode = conn.getResponseCode();
-            if (responseCode >= 200 && responseCode < 300) {
-                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"));
-                StringBuilder responseList = new StringBuilder();
-                String responseLine;
-                while ((responseLine = br.readLine()) != null) {
-                    responseList.append(responseLine.trim());
-                }
-
-                JSONParser parser = new JSONParser();
-                JSONObject jsonResponse = (JSONObject) parser.parse(responseList.toString());
-                JSONArray choices = (JSONArray) jsonResponse.get("choices");
-                if (choices != null && choices.size() > 0) {
-                    JSONObject firstChoice = (JSONObject) choices.get(0);
-                    JSONObject msg = (JSONObject) firstChoice.get("message");
-                    return (String) msg.get("content");
-                }
-            } else {
-                System.err.println("LLM API Error: HTTP " + responseCode);
-                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getErrorStream(), "utf-8"));
-                String line;
-                if (br != null) {
-                    while ((line = br.readLine()) != null) {
-                        System.err.println(line);
+        for (int attempt = 1; attempt <= maxRetries; ++attempt) {
+            try {
+                // 1. 构建 API 端点 URL
+                String endpoint = baseUrl;
+                if (!endpoint.endsWith("/chat/completions")) {
+                    if (endpoint.endsWith("/")) {
+                        endpoint += "chat/completions";
+                    } else {
+                        endpoint += "/chat/completions";
                     }
                 }
+                URL url = new URL(endpoint);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                // 2. 设置 HTTP 请求头
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+                conn.setConnectTimeout(10000); // 10秒连接超时
+                conn.setReadTimeout(60000); // 60秒读取超时
+                conn.setDoOutput(true);
+
+                // 3. 构建 JSON 请求体
+                JSONObject message = new JSONObject();
+                message.put("role", "user");
+                message.put("content", prompt);
+
+                JSONArray messages = new JSONArray();
+                messages.add(message);
+
+                JSONObject requestBody = new JSONObject();
+                requestBody.put("model", modelName);
+                requestBody.put("messages", messages);
+                requestBody.put("temperature", 0.1);
+                requestBody.put("max_tokens", 20480);
+
+                // 4. 发送数据
+                try (OutputStream os = conn.getOutputStream()) {
+                    byte[] input = requestBody.toJSONString().getBytes("utf-8");
+                    os.write(input, 0, input.length);
+                }
+
+                // 5. 处理响应
+                int responseCode = conn.getResponseCode();
+                if (responseCode >= 200 && responseCode < 300) {
+                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"));
+                    StringBuilder responseList = new StringBuilder();
+                    String responseLine;
+                    while ((responseLine = br.readLine()) != null) {
+                        responseList.append(responseLine.trim());
+                    }
+
+                    // 6. 解析嵌套的 JSON (choices -> 0 -> message -> content)
+                    try {
+                        JSONParser parser = new JSONParser();
+                        JSONObject jsonResponse = (JSONObject) parser.parse(responseList.toString());
+
+                        if (jsonResponse != null && jsonResponse.containsKey("choices")) {
+                            JSONArray choices = (JSONArray) jsonResponse.get("choices");
+                            if (choices != null && !choices.isEmpty()) {
+                                JSONObject firstChoice = (JSONObject) choices.get(0);
+                                if (firstChoice != null && firstChoice.containsKey("message")) {
+                                    JSONObject msg = (JSONObject) firstChoice.get("message");
+                                    if (msg != null && msg.containsKey("content")) {
+                                        return (String) msg.get("content");
+                                    }
+                                }
+                            }
+                        }
+                        System.err.println("Warning: Unexpected JSON format from LLM response.");
+                        System.err.println("Raw response: " + responseList.toString());
+
+                    } catch (org.json.simple.parser.ParseException pe) {
+                        System.err.println("Failed to parse JSON response from LLM:");
+                        System.err.println("Raw response: " + responseList.toString());
+                        pe.printStackTrace();
+                    } catch (Exception processEx) {
+                        System.err.println("Error processing JSON response:");
+                        processEx.printStackTrace();
+                    }
+
+                    // 如果 JSON 解析失败但请求本身成功，说明大概率是返回结构错误，我们不再重试，直接返回 null。
+                    return null;
+                } else {
+                    System.err.println("LLM API Error (Attempt " + attempt + "): HTTP " + responseCode);
+                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getErrorStream(), "utf-8"));
+                    String line;
+                    if (br != null) {
+                        while ((line = br.readLine()) != null) {
+                            System.err.println(line);
+                        }
+                    }
+                    if (attempt == maxRetries) {
+                        System.err.println("Max retries reached. LLM request failed.");
+                        return null;
+                    }
+                }
+            } catch (java.net.SocketTimeoutException ste) {
+                System.err.println("LLM API timeout (Attempt " + attempt + "): " + ste.getMessage());
+                if (attempt == maxRetries) {
+                    return null;
+                }
+            } catch (Exception e) {
+                System.err.println("LLM API generic error (Attempt " + attempt + "): " + e.getMessage());
+                e.printStackTrace();
+                if (attempt == maxRetries) {
+                    return null;
+                }
             }
 
-        } catch (Exception e) {
-            e.printStackTrace();
+            // 在重试前等待
+            try {
+                Thread.sleep(delayMs * attempt); // 指数退避策略
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
         }
         return null;
     }
 
     /**
-     * 通过正则表达式从 LLM 自由文本响应中，匹配并提取出模型指定保留的 EdgeID 列表。
-     * 模型应在回复的一开始或是末尾包含形如：[123, 124, 60] 这样的格式。
-     * 此方法会自动抽取满足这一规则的数据并建立去重的集合。
+     * 解析方法：利用正则表达式从 AI 回复的繁杂文字中精准提取出 Edge ID。
+     * 主要匹配格式： [ID1, ID2, ID3]
      */
     private Set<String> extractEdgeIdsFromResponse(String response) {
         Set<String> edgeIds = new HashSet<>();
-        // Look for [id1, id2, ...]
-        Pattern pattern = Pattern.compile("\\[([a-zA-Z0-9_\\-\\s,]+)\\]");
+        if (response == null || response.isEmpty()) {
+            return edgeIds;
+        }
+
+        // 正则表达式说明：
+        // 查找以 [ 开头，] 结尾的部分，并捕获中间包含字母数字、逗号、引号的内容
+        Pattern pattern = Pattern.compile("\\[([a-zA-Z0-9_\\-\\s,\"']+)\\]");
         Matcher matcher = pattern.matcher(response);
         String lastMatch = null;
         while (matcher.find()) {
@@ -259,7 +332,19 @@ public class LLMGraphFilter {
         if (lastMatch != null) {
             String[] ids = lastMatch.split(",");
             for (String id : ids) {
-                edgeIds.add(id.trim());
+                String cleanId = id.trim().replaceAll("[\"']", ""); // 移除多余的引号
+                if (!cleanId.isEmpty()) {
+                    edgeIds.add(cleanId);
+                }
+            }
+        } else {
+            // 降级策略（Fallback）：如果没有找到预期的方括号格式，尝试提取任何连续的数字序列作为潜在的边 ID
+            System.err.println(
+                    "Warning: Could not find edge IDs in expected bracket format. Attempting fallback extraction.");
+            Pattern fallbackPattern = Pattern.compile("\\b(\\d+)\\b");
+            Matcher fallbackMatcher = fallbackPattern.matcher(response);
+            while (fallbackMatcher.find()) {
+                edgeIds.add(fallbackMatcher.group(1));
             }
         }
         return edgeIds;
@@ -268,7 +353,7 @@ public class LLMGraphFilter {
     /**
      * 根据 LLM 提供需要保留的 EdgeID 集合，基于原始溯源图重新构建并返回一个新的被过滤的图对象。
      * 遍历原始图中的边，如果该边的 ID 在保留集合内，则将其自身以及其相连的端点节点复制到新的子图中。
-     * 
+     *
      * @param originalGraph 原始的大图对象
      * @param keptEdgeIds   LLM 判定需要保留并且属于因果攻击路径的边 ID 集合
      * @return 新生成的精简后的溯源子图
@@ -279,9 +364,8 @@ public class LLMGraphFilter {
 
         DirectedPseudograph<EntityNode, EventEdge> filteredGraph = new DirectedPseudograph<>(EventEdge.class);
 
-        // Convert keptEdgeIds to Integer or String comparison depending on how event id
-        // is stored
-        // event.getID() might be int or long. Let's compare as String.
+        // 根据 event id 的存储方式，将 keptEdgeIds 转换为 Integer 或 String 进行比较。
+        // event.getID() 可能是 int 或是 long。安全起见我们直接转为 String 对比。
         for (EventEdge edge : originalGraph.edgeSet()) {
             if (keptEdgeIds.contains(String.valueOf(edge.getID()))) {
                 EntityNode source = originalGraph.getEdgeSource(edge);
@@ -297,8 +381,7 @@ public class LLMGraphFilter {
             }
         }
 
-        // Keep isolated vertices if we strictly want them, but usually filtered graph
-        // only needs connected ones.
+        // 如果严格要求则可以保留孤立的点，但通常过滤后的图只需要连通的节点。
         return filteredGraph;
     }
 }

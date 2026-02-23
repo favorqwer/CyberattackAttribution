@@ -4,6 +4,8 @@
 
 本项目复现了论文 **"Back-Propagating System Dependency Impact for Attack Investigation"** 中的网络攻击溯源系统。该系统通过分析系统审计日志（如Sysdig），构建进程、文件、网络实体之间的依赖图，并使用后向影响传播算法识别攻击入口点。
 
+系统新增 **LLM过滤模块 (LLMGraphFilter)**，可调用大语言模型（如OpenAI、NVIDIA DeepSeek等）进一步分析溯源图，识别真正的攻击路径并过滤背景噪音。
+
 ## 核心概念
 
 ### 1. 实体类型 (Entity Types)
@@ -60,6 +62,12 @@
 - 获取得分最高的节点作为候选入口点
 - 结合前向分析验证因果路径
 
+#### Step 7: LLM图过滤 (LLMGraphFilter.java)
+- 将溯源图序列化为文本格式，构建Prompt
+- 调用LLM API（如OpenAI、NVIDIA DeepSeek等）分析因果关系
+- 从LLM响应中提取需要保留的边ID
+- 构建过滤后的精简溯源图，仅保留真正的攻击路径
+
 ## 项目结构
 
 ```
@@ -75,6 +83,8 @@ src/main/java/
 │   ├── BackwardPropagate_pf.java # 权重计算 + PageRank传播
 │   ├── ForwardAnalysis.java     # 前向分析
 │   ├── IterateGraph.java        # 图遍历和导出
+│   ├── LLMGraphFilter.java     # LLM图过滤模块
+│   ├── ProcessOneLogCMD_19.java # 实验流程(含LLM调用)
 │   ├── ExperimentRunnerCmd.java # 主入口(命令行)
 │   ├── Experiment.java          # 实验配置解析
 │   ├── MetaConfig.java          # 系统配置(本地IP、系统调用白名单)
@@ -101,6 +111,20 @@ midRP = /lib64/libc.so.6,...            # 中可信实体(可选，扩展白名�
 detectionSize = 1024                    # 检测到的数据量
 criticalEdge = edge1;edge2              # 关键边(用于评估)
 ```
+
+### 3. LLM配置文件 (llm.properties)
+可选配置文件，用于启用LLM图过滤功能。
+
+配置项说明:
+```properties
+base_url = https://api.openai.com/v1  # LLM API端点
+api_key = sk-xxxxx                       # API密钥
+model = gpt-4o                           # 模型名称(如gpt-4o、deepseek-chat等)
+```
+
+支持多种LLM服务:
+- **OpenAI**: `base_url=https://api.openai.com/v1`
+- **NVIDIA DeepSeek**: `base_url=https://integrate.api.nvidia.com/v1`
 
 ## 运行方式
 
@@ -130,6 +154,8 @@ java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar \
 - `Weight_*.dot`: 带权重的最终图
 - `*_entry_points.json`: 识别出的入口点列表
 - `results/` 目录: 完整的溯源图(.dot + .svg)
+- `llm_interaction_*.log`: LLM API调用日志(Prompt和Response)
+- `llm_filtered_graph_*.svg`: LLM过滤后的精简溯源图
 
 ## 关键配置 (MetaConfig.java)
 
@@ -157,3 +183,4 @@ ntopSystemCall = {"read","recvmsg",...} # N2P事件系统调用
 2. 传播算法: 修改 `PageRankIterationBackward` 方法
 3. 入口点识别: 修改 `getForwardStarts` 和 `getCandidateEntryPoint` 方法
 4. 添加新事件类型: 在 `EventEdge.java` 添加构造函数，在 `GetGraph.java` 添加处理逻辑
+5. LLM过滤: 修改 `LLMGraphFilter.java` 中的 `buildPrompt` 方法调整Prompt策略，或修改 `extractEdgeIdsFromResponse` 方法优化边ID提取逻辑
