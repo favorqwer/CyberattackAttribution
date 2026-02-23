@@ -6,17 +6,64 @@ import java.math.BigDecimal;
 import java.util.*;
 
 /**
- * Created by fang on 3/23/18.
+ * CausalityPreserve (CPR) - 因果保持压缩算法
+ * 
+ * 本类实现因果保持压缩算法，用于在保持因果关系的前提下压缩图规模。
+ * 
+ * 压缩原理：
+ * 在短时间内（例如10秒内），同一个进程对同一个文件/网络的连续操作可以被合并为一条边。
+ * 例如：
+ *   - 进程P连续写文件F 10次 -> 合并为1条边，数据量累加
+ *   - 进程P连续发送网络数据包5次 -> 合并为1条边，数据量累加
+ * 
+ * 合并条件：
+ * 1. 相同的事件类型（如都是write）
+ * 2. 相同的主体和客体（源节点和目标节点相同）
+ * 3. 时间间隔在指定窗口内（默认10秒）
+ * 4. 合并后的边保留最早开始时间和最晚结束时间
+ * 
+ * 为什么要做因果保持压缩？
+ * 1. 减少图规模，提高后续分析效率
+ * 2. 保留关键的因果依赖关系
+ * 3. 消除时间噪声（连续的重复操作）
+ * 
+ * 三种压缩模式：
+ * 1. mergeConsiderTimeAndType: 考虑时间和事件类型
+ * 2. mergeConsiderType: 只考虑事件类型
+ * 3. mergeWithoutConsideringTimeAndType: 不考虑时间和类型（完全合并）
+ * 
+ * @author fang
+ * @date 2018/3/23
  */
 public class CausalityPreserve {
+    // 输入的依赖图（后向切片后的子图）
     DirectedPseudograph<EntityNode, EventEdge> input;
+    // 图遍历工具
     IterateGraph graphIter;
+    // 压缩后的图
     DirectedPseudograph<EntityNode, EventEdge> afterMerge;
+    
+    /**
+     * 构造函数
+     * 
+     * @param input 输入的依赖图
+     */
     CausalityPreserve(DirectedPseudograph<EntityNode, EventEdge> input){
+        // 深拷贝输入图，避免修改原始数据
         this.input = (DirectedPseudograph<EntityNode, EventEdge>)input.clone();
     }
 
     /*Provide three different kind merge methods*/
+    
+    /**
+     * CPR - 因果保持压缩主方法
+     * 
+     * @param choose 压缩模式选择：
+     *               1: 考虑时间和事件类型
+     *               2: 只考虑事件类型
+     *               3: 不考虑时间和类型
+     * @return 压缩后的图
+     */
     public DirectedPseudograph<EntityNode, EventEdge> CPR (int choose){
         System.out.println("CPR invoked: "+choose);
         if(choose < 1 || choose > 3){
@@ -109,6 +156,23 @@ public class CausalityPreserve {
         return afterMerge;
     }
 
+    /**
+     * mergeEdgeFallInTheRange2 - 基于时间窗口的边合并方法（优化版本）
+     * 
+     * 这是实际使用的方法，通过时间窗口控制边的合并。
+     * 算法流程：
+     * 1. 将所有边按开始时间排序
+     * 2. 对每对(源节点, 目标节点, 事件类型)，维护一个栈
+     * 3. 依次处理边：如果与栈顶边的间隔小于指定时间窗口，则合并；否则新建一条边
+     * 4. 最后将合并后的边添加到新图中
+     * 
+     * 优化点：
+     * - 不修改原始图，而是在新图中添加合并后的边
+     * - 使用栈结构维护待合并的边
+     * 
+     * @param range 时间窗口大小（单位：秒），默认10秒
+     * @return 合并后的新图
+     */
     //build a new graph rather than deleting edges in the original one, better performance
     public DirectedPseudograph<EntityNode, EventEdge> mergeEdgeFallInTheRange2(double range) {
         DirectedPseudograph<EntityNode, EventEdge> merged = new DirectedPseudograph<EntityNode, EventEdge>(EventEdge.class);

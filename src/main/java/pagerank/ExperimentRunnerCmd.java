@@ -13,18 +13,54 @@ import java.util.*;
 import java.util.logging.*;
 import java.util.logging.Formatter;
 
-/*
-Specify the path to log files and result directories. Either a list of log file names or a FileNameFormatter is acceptable.
-The directory of log must also contains configuration files with the same name as the corresponding log but ends with ".property".
+/**
+ * ExperimentRunnerCmd - 实验运行命令行入口类
+ *
+ * 本类是整个DepImpact网络攻击溯源系统的主入口，负责：
+ * 1. 解析命令行参数（日志路径、结果目录、日志文件名）
+ * 2. 加载配置文件（.property文件，包含POI、highRP、lowRP等配置）
+ * 3. 初始化图生成器并构建依赖图
+ * 4. 为每个配置运行反向溯源分析实验
+ * 5. 输出结果到指定目录
+ *
+ * 使用方式：
+ *   java ExperimentRunnerCmd <日志路径> <结果路径> <日志文件名(多个用分号分隔)>
+ *
+ * 示例：
+ *   java ExperimentRunnerCmd ./input/logs_fine ./output wget.txt
+ *
+ * 配置文件说明：
+ * - 与日志同名的.property文件（如wget.txt对应的wget.backward文件）
+ * - 以.backward结尾表示反向溯源分析
+ * - 配置文件包含：POI（检测点）、highRP（高可信实体）、lowRP（低可信实体）等
  */
 public class ExperimentRunnerCmd {
+    // 权重计算模式：clusterall, nonml, clusterlocal, fanout等
+    // 参见ProcessOneLogCMD_19中的mode参数说明
     public static String mode;
     public static String do_split;
+    // 从日志文件构建的依赖图（整个项目只构建一次，提高效率）
     DirectedPseudograph<EntityNode, EventEdge> graphFromLog;
+    // 日志文件所在目录路径
     String PathToLogs;
+    // 结果输出目录路径
     String PathToRes;
+    // 日志文件名过滤器（用于筛选要处理的日志文件）
     FilenameFilter logNameFilter;
 
+    /**
+     * 主方法 - 程序入口点
+     *
+     * @param args 命令行参数，包含三个必需参数：
+     *              args[0]: 日志文件所在目录路径
+     *              args[1]: 结果输出目录路径
+     *              args[2]: 要处理的日志文件名（多个用分号分隔，如"wget.txt;curl.txt"）
+     *
+     * 处理流程：
+     * 1. 初始化Graphviz引擎（用于后续图可视化）
+     * 2. 解析命令行参数
+     * 3. 创建ExperimentRunnerCmd实例并调用run2()执行实验
+     */
     public static void main(String[] args) {
         // 关闭 GraalVM "解释模式" 的性能警告
         System.setProperty("polyglot.engine.WarnInterpreterOnly", "false");
@@ -56,18 +92,24 @@ public class ExperimentRunnerCmd {
             System.setErr(originalErr);
         }
 
+        // 打印命令行参数（用于调试）
         for (String arg : args)
             System.out.println(arg);
 
+        // 检查参数数量
         if (args.length != 3) {
             System.err.println("Usage: ExperimentRunnerCmd <log path> <result path> <log names,...>");
             System.exit(-1);
         }
         try {
-            String logPath = args[0];
-            String resPath = args[1];
-            String[] logs = args[2].split(";");
+            // 解析命令行参数
+            String logPath = args[0];       // 日志目录路径
+            String resPath = args[1];       // 结果输出目录路径
+            String[] logs = args[2].split(";");  // 日志文件名数组（支持多个）
+            
+            // 创建实验运行器实例
             ExperimentRunnerCmd er = new ExperimentRunnerCmd(logPath, resPath, logs);
+            // 执行实验主流程
             er.run2();
         } catch (Exception e) {
             e.printStackTrace();
@@ -75,20 +117,40 @@ public class ExperimentRunnerCmd {
 
     }
 
+    /**
+     * 构造函数 - 使用FilenameFilter过滤日志文件
+     * @param pathToLogs 日志目录路径
+     * @param pathToRes 结果输出目录路径
+     * @param logNameFilter 日志文件名过滤器
+     */
     public ExperimentRunnerCmd(String pathToLogs, String pathToRes, FilenameFilter logNameFilter) {
         PathToLogs = pathToLogs;
         PathToRes = pathToRes;
         this.logNameFilter = logNameFilter;
     }
 
+    /**
+     * 构造函数 - 根据日志文件名数组过滤
+     * @param pathTologs 日志目录路径
+     * @param pathToRes 结果输出目录路径
+     * @param lognames 日志文件名数组
+     */
     public ExperimentRunnerCmd(String pathTologs, String pathToRes, String[] lognames) {
         PathToLogs = pathTologs;
         PathToRes = pathToRes;
         Set<String> logset = new HashSet<>();
         for (String s : lognames) logset.add(s);
+        // 创建过滤器：只接受指定名称的日志文件
         logNameFilter = (dir, name) -> logset.contains(name);
     }
 
+    /**
+     * 构造函数 - 根据日志文件名数组过滤，同时排除某些文件
+     * @param pathToLogs 日志目录路径
+     * @param pathToRes 结果输出目录路径
+     * @param logNameFilter 基础过滤器
+     * @param exclusion 要排除的日志文件名数组
+     */
     public ExperimentRunnerCmd(String pathToLogs, String pathToRes, FilenameFilter logNameFilter, String[] exclusion) {
         PathToLogs = pathToLogs;
         PathToRes = pathToRes;
@@ -97,18 +159,41 @@ public class ExperimentRunnerCmd {
         this.logNameFilter = (dir, name) -> logNameFilter.accept(dir, name) && !exclusionSet.contains(name);
     }
 
+    /**
+     * run2 - 主实验执行方法
+     * 
+     * 这是核心执行流程，主要步骤如下：
+     * 1. 创建结果目录
+     * 2. 获取日志文件列表
+     * 3. 一次性构建完整依赖图（GetGraph），避免重复解析日志
+     * 4. 查找所有配置文件（.property或.backward文件）
+     * 5. 对每个配置文件创建Experiment对象并运行反向溯源分析
+     * 6. 保存JSON格式的实验结果
+     * 
+     * @throws FileNotFoundException 如果日志目录不存在则抛出异常
+     */
     //Fang: for benign cases: avoid to parse log several times
     public void run2() throws FileNotFoundException {
         //todo 此处固定mode
         mode = "clusterall";
+        
+        // 1. 创建结果输出目录
         File resDir = makeResDir(PathToRes);
+        
+        // 2. 获取日志目录下的所有日志文件
         File[] logs = getLogs(PathToLogs);
         File log = logs[0];
+        
+        // 实验列表（虽然声明了但主要使用experiments_backward）
         List<Experiment> experiments = new ArrayList<>();
+        // 反向溯源实验列表
         List<Experiment> experiments_backward = new ArrayList<>();
         PrintStream logStream;
 
         try {
+            // 3. 【关键】一次性构建完整依赖图
+            // GetGraph负责解析Sysdig日志，构建进程-文件-网络实体之间的依赖图
+            // 这个图会被所有实验共享，避免重复解析日志文件
             GetGraph generator = new GetGraph(logs[0].getPath(), MetaConfig.localIP);
             generator.GenerateGraph();  // 生成图结构
             graphFromLog = generator.getJg();  // 获取生成的图
@@ -117,37 +202,68 @@ public class ExperimentRunnerCmd {
         }
 
         try {
+            // 4. 查找配置文件
+            // 在日志所在目录查找与日志同名的.property文件
+            // 例如：wget.txt 对应 wget.backward.property
             File[] propertyFiles = log.getParentFile().listFiles((dir, name) ->
                     (name.split("\\.")[0].equals(log.getName().split("\\.")[0]) || name.startsWith(log.getName().split("\\.")[0] + ":")) && name.endsWith(".property"));
+            
+            // 5. 遍历所有配置文件，创建反向实验
             for (File propertyFile : propertyFiles) {
                 String propertyName = propertyFile.getName();
+                // 以"backward"结尾的配置文件表示反向溯源分析
                 if (propertyName.indexOf("backward") != -1) {
                     experiments_backward.add(new Experiment(log, propertyFile));// 创建反向实验
                 }
             }
 
+            // 6. 依次运行每个反向实验
             for (Experiment e : experiments_backward) {
+                // 为每个实验创建独立的输出目录
+                // 目录命名格式：<配置文件父目录名>-<配置文件名(无后缀)>
                 File oneRes = new File(resDir + "/" + e.configFile.getParentFile().getName() + "-" + e.configFile.getName().split("\\.")[0]);
                 if (!oneRes.exists())
                     oneRes.mkdir();
 
+                // 创建日志文件，记录实验过程
                 File logFile = new File(oneRes.getAbsolutePath() + "/" + e.log.getName().split("\\.")[0] + ".log");
                 logStream = new PrintStream(new FileOutputStream(logFile, true));
                // logging(e, logFile);
+                // 同时输出到控制台和日志文件
                 LogStream ls = new LogStream(System.out, logStream);
                 LogStream lse = new LogStream(System.err, logStream);
                 System.setOut(ls);
                 System.setErr(lse);
-                // 执行反向分析实验
+                
+                // 创建JSON对象记录实验结果
                 JSONObject jsonLog = new JSONObject();
                 jsonLog.put("Case", e.log.getName());
                 jsonLog.put("Mode", mode);
+                
+                // 7. 【核心】执行反向溯源分析实验
+                // 参数说明：
+                // - graphFromLog: 之前构建的完整依赖图
+                // - oneRes.getAbsolutePath(): 结果输出目录
+                // - e.threshold: 阈值
+                // - e.trackOrigin: 是否追踪源头
+                // - e.log.getAbsolutePath(): 日志文件路径
+                // - MetaConfig.localIP: 本地IP地址列表
+                // - e.POI: Point of Interest，检测点/恶意事件
+                // - e.highRP: 高可信实体列表（如系统进程、正常IP）
+                // - e.midRP: 中可信实体列表
+                // - e.lowRP: 低可信实体列表（如可疑IP、临时文件）
+                // - e.detectionSize: 检测到的数据量
+                // - e.getInitial(): 初始种子源
+                // - e.criticalEdges: 关键边（用于评估）
+                // - mode: 权重计算模式
+                // - jsonLog: JSON日志对象
+                // - e.getEntries(): 预定义的重要入口点
                 ProcessOneLogCMD_19.run_exp_backward(graphFromLog, oneRes.getAbsolutePath() + "/", "", e.threshold, e.trackOrigin, e.log.getAbsolutePath(), MetaConfig.localIP, e.POI, e.highRP, e.midRP, e.lowRP, e.log.getName().split("\\.")[0], e.detectionSize, e.getInitial(), e.criticalEdges, mode, jsonLog, e.getEntries());
 
 //                ProcessOneLogCMD_19.process_backward(oneRes.getAbsolutePath() + "/", "", e.threshold, e.trackOrigin, e.log.getAbsolutePath(), MetaConfig.localIP, e.POI, e.highRP, e.midRP, e.lowRP, e.log.getName().split("\\.")[0], e.detectionSize, e.getInitial(), e.criticalEdges, "nonml");
                 logStream.close();
 
-                // 保存JSON格式的日志结果
+                // 8. 保存JSON格式的实验结果
                 Timestamp currentTimestamp = getTimeStamp();
                 jsonLog.put("Timestamp", currentTimestamp.toString());
                 File entryPointsJsonFile = new File(oneRes.getAbsolutePath() + "/" + e.configFile.getName().split("\\.")[0] + "_json_log.json");

@@ -1,6 +1,31 @@
-package pagerank; /**
- * Created by fang on 7/3/17.
- * This class inclueds bfs , bfs with hopcount, backtrack to iterate the graph
+package pagerank; 
+/**
+ * GetGraph - 依赖图构建类
+ * 
+ * 本类负责从Sysdig系统审计日志中解析系统调用事件，构建进程、文件、网络实体之间的依赖图。
+ * 
+ * 图的基本概念：
+ * - 节点(Vertex/EntityNode): 代表系统实体，包括Process(进程)、File(文件)、Network(网络)
+ * - 边(Edge/EventEdge): 代表系统事件/系统调用，连接不同实体
+ * 
+ * 支持的5种事件类型（边）：
+ * 1. PtoP (Process to Process): 进程间通信，通过execve系统调用创建子进程
+ * 2. PtoF (Process to File): 进程写文件，通过write/writev系统调用
+ * 3. FtoP (File to Process): 文件被进程读取，通过read/readv系统调用
+ * 4. PtoN (Process to Network): 进程发起网络连接，通过sendto/write/sendmsg
+ * 5. NtoP (Network to Process): 网络连接被接收，通过read/recvmsg/recvfrom
+ * 
+ * 边的方向：遵循信息流方向，而非系统调用方向
+ * - 例如：进程读取文件，信息从文件流向进程，所以是FtoP边
+ * - 例如：进程写文件，信息从进程流向文件，所以是PtoF边
+ * 
+ * 本类还提供图遍历功能：
+ * - BFS广度优先遍历
+ * - 带跳数限制的BFS
+ * - BackTrack后向追踪
+ * 
+ * @author fang
+ * @date 2017/7/3
  */
 
 import org.jgrapht.ext.DOTExporter;
@@ -13,15 +38,29 @@ import java.util.*;
 
 public class GetGraph {
 
+    // 依赖图对象：存储所有的实体节点和事件边
     public DirectedPseudograph<EntityNode, EventEdge> jg;
+    // 日志文件路径
     private String filePath;
+    // 本地IP地址数组（用于判断网络连接方向）
     private String[] localIP;
+    // 实体节点映射表：用于根据唯一ID快速查找节点
     private HashMap<Long, EntityNode> entityNodeMap;
+    // 日志解析器：负责解析Sysdig格式的日志文件
     private ProcessTheOriginalParserOutput sysdigProcess;
+    // DOT格式导出器：用于将图导出为DOT格式（可被Graphviz渲染）
     private DOTExporter<EntityNode, EventEdge> exporter;
+    // POI（检测点/恶意事件）对应的节点
     public EntityNode POIEvent;
+    // 图遍历工具类
     private IterateGraph iter;
 
+    /**
+     * 构造函数
+     * 
+     * @param path 日志文件路径
+     * @param localIP 本地IP地址数组
+     */
     public GetGraph(String path, String[] localIP) {
         filePath = path;
         // 深拷贝本地IP数组（避免外部修改影响内部数据）
@@ -30,14 +69,17 @@ public class GetGraph {
             this.localIP[i] = localIP[i];
         }
         POIEvent = null;
-        // 创建有向伪图（允许自环和平行边）
+        // 创建有向伪图（DirectedPseudograph允许自环和平行边）
+        // 这是JGraphT库的数据结构，适合表示多事件类型的依赖图
         jg = new DirectedPseudograph<EntityNode, EventEdge>(EventEdge.class);
         // 创建实体节点映射表（用于快速查找节点）
         entityNodeMap = new HashMap<Long, EntityNode>();
         // 创建原始数据解析器
+        // ProcessTheOriginalParserOutput负责解析Sysdig日志
         sysdigProcess = new ProcessTheOriginalParserOutput(path, localIP);
         //sysdigProcess.reverseSourceAndSink();
         // 创建DOT格式导出器（用于图形化显示）
+        // EntityIdProvider和EntityNameProvider提供节点ID和名称的格式化
         exporter = new DOTExporter<EntityNode, EventEdge>(new EntityIdProvider(),
                 new EntityNameProvider(), new EventEdgeProvider());
     }
@@ -60,24 +102,35 @@ public class GetGraph {
         return jg;
     }
 
-    public void GenerateGraph() {//从解析的原始数据中提取各种事件类型，构建完整的图结构。
-        Map<String, NtoPEvent> networkProcessMap = sysdigProcess.getNetworkProcessMap();
-        Map<String, PtoNEvent> processNetworkMap = sysdigProcess.getProcessNetworkMap();
-        Map<String, PtoFEvent> processFileMap = sysdigProcess.getProcessFileMap();
-        Map<String, FtoPEvent> fileProcessMap = sysdigProcess.getFileProcessMap();
-        Map<String, PtoPEvent> processProcessMap = sysdigProcess.getProcessProcessMap();
-        addFileToProcessEvent(fileProcessMap);
-        addNetworkToProcessEvent(networkProcessMap);
-        addProcessToFileEvent(processFileMap);
-        addProcessToProcessEvent(processProcessMap);
-        addProcessToNetworkEvent(processNetworkMap);
+    /**
+     * GenerateGraph - 构建依赖图的核心方法
+     * 
+     * 从解析后的日志数据中提取5种事件类型，创建对应的边并添加到图中：
+     * 1. FtoP (File to Process): 文件被读取，边的方向从文件指向进程
+     * 2. NtoP (Network to Process): 网络数据被接收，方向从网络到进程
+     * 3. PtoF (Process to File): 进程写文件，方向从进程到文件
+     * 4. PtoP (Process to Process): 进程间通信（execve创建子进程）
+     * 5. PtoN (Process to Network): 进程发起网络连接
+     * 
+     * 最后为所有边分配唯一的ID，便于后续处理和追踪
+     */
+    public void GenerateGraph() {
+        // 获取解析后的5种事件映射表
+        Map<String, NtoPEvent> networkProcessMap = sysdigProcess.getNetworkProcessMap();  // NtoP事件
+        Map<String, PtoNEvent> processNetworkMap = sysdigProcess.getProcessNetworkMap();  // PtoN事件
+        Map<String, PtoFEvent> processFileMap = sysdigProcess.getProcessFileMap();      // PtoF事件
+        Map<String, FtoPEvent> fileProcessMap = sysdigProcess.getFileProcessMap();      // FtoP事件
+        Map<String, PtoPEvent> processProcessMap = sysdigProcess.getProcessProcessMap(); // PtoP事件
+        
+        // 依次添加5种事件到图中
+        addFileToProcessEvent(fileProcessMap);      // FtoP: 文件到进程（读取）
+        addNetworkToProcessEvent(networkProcessMap); // NtoP: 网络到进程（接收）
+        addProcessToFileEvent(processFileMap);      // PtoF: 进程到文件（写入）
+        addProcessToProcessEvent(processProcessMap); // PtoP: 进程到进程（通信）
+        addProcessToNetworkEvent(processNetworkMap); // PtoN: 进程到网络（发起）
+        
+        // 为所有边分配唯一ID
         assignEdgeId();
-//        文件到进程事件- 文件访问相关的边
-//        网络到进程事件- 网络连接接收的边
-//        进程到文件事件- 文件写入/读取的边
-//        进程到进程事件- 进程间通信的边
-//        进程到网络事件- 网络连接发起的边
-//        分配边ID- 为所有边分配唯一标识符
     }
 
     private void assignEdgeId() {

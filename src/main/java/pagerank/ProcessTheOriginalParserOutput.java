@@ -9,19 +9,50 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Created by fang on 7/28/17.
+ * ProcessTheOriginalParserOutput - 原始日志解析结果处理类
+ * 
+ * 本类是日志解析器（SysdigOutputParser）和图构建器（GetGraph）之间的桥梁。
+ * 负责：
+ * 1. 调用日志解析器解析Sysdig格式的日志文件
+ * 2. 获取5种事件类型的映射表
+ * 3. 处理网络事件的方向（根据信息流方向）
+ * 
+ * 输出的5种事件映射表：
+ * - processFileMap: 进程->文件事件（PtoF）
+ * - processNetworkMap: 进程->网络事件（PtoN）
+ * - processProcessMap: 进程->进程事件（PtoP）
+ * - networkProcessMap: 网络->进程事件（NtoP）
+ * - fileProcessMap: 文件->进程事件（FtoP）
+ * 
+ * @author fang
+ * @date 2017/7/28
  */
 public class ProcessTheOriginalParserOutput {
+    // 进程->文件事件映射表（PtoF）
     private Map<String, PtoFEvent> processFileMap;
+    // 进程->网络事件映射表（根据信息流方向）
     private Map<String, PtoNEvent> processNetworkMap;  // this event direction is decided by the information flow direction
+    // 进程->进程事件映射表（PtoP）
     private Map<String, PtoPEvent> processProcessMap;
+    // 网络->进程事件映射表（NtoP，根据信息流方向）
     private Map<String, NtoPEvent> networkProcessMap;  // this event direction is decided by the information flow direction
+    // 文件->进程事件映射表（FtoP）
     private Map<String, FtoPEvent> fileProcessMap;
+    // 进程->网络映射表（根据IP地址方向：本地->远程）
     private Map<String, PtoNEvent> pnmap;              // this one is just according to ip direction(local->remote)
+    // 网络->进程映射表（根据IP地址方向：远程->本地）
     private Map<String, NtoPEvent> npmap;              // this one is just according to ip direction(remote -> local)
+    // 日志解析器
     private SysdigOutputParser parser;
 
+    /**
+     * 构造函数
+     * 
+     * @param logFilePath 日志文件路径
+     * @param localIP 本地IP地址数组
+     */
     public ProcessTheOriginalParserOutput(String logFilePath, String[]localIP){
+        // 创建Sysdig日志解析器
         parser = new SysdigOutputParserNoRegex(logFilePath,localIP);
         try {
             parser.getEntities();  // 开始解析日志文件
@@ -29,11 +60,13 @@ public class ProcessTheOriginalParserOutput {
             System.out.println("The log file doesn't exist");
         }
         // 获取各种事件映射表
-        processFileMap = parser.getPfmap();
-        pnmap = parser.getPnmap();
-        processProcessMap = parser.getPpmap();
-        npmap = parser.getNpmap();
-        fileProcessMap = parser.getFpmap();
+        processFileMap = parser.getPfmap();   // PtoF事件
+        pnmap = parser.getPnmap();            // 进程->网络（按IP方向）
+        processProcessMap = parser.getPpmap(); // PtoP事件
+        npmap = parser.getNpmap();            // 网络->进程（按IP方向）
+        fileProcessMap = parser.getFpmap();   // FtoP事件
+        
+        // 初始化信息流方向的映射表（稍后可能通过reverseSourceAndSink调整）
         processNetworkMap = new HashMap<>();
         networkProcessMap = new HashMap<>();
     }

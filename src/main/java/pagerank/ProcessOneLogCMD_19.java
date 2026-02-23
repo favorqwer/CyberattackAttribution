@@ -12,35 +12,96 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Created by fang on 4/6/18.
+ * ProcessOneLogCMD_19 - 单日志文件处理核心类
+ * 
+ * 本类是整个溯源系统的核心处理逻辑，实现了完整的攻击溯源流程：
+ * 
+ * 完整处理流程（反向溯源）：
+ * 1. GetGraph - 从Sysdig日志构建依赖图
+ * 2. BackTrack - 后向切片，从POI（检测点）反向追踪可能的因果路径
+ * 3. CausalityPreserve (CPR) - 因果保持压缩，合并时间窗口内的连续操作
+ * 4. 特征权重计算 - 根据不同模式计算边权重（时间、数据量、结构特征）
+ * 5. PageRank传播 - 后向迭代传播恶意度分数
+ * 6. 入口点识别 - 找出最可能的攻击入口点
+ * 7. 前向分析验证 - 结合前向分析过滤出真正的攻击路径
+ * 8. LLM过滤（可选）- 使用大语言模型进一步过滤噪音
+ * 
+ * 支持的权重计算模式（mode参数）：
+ * - nonml: 手动权重（时间0.5+结构0.5，或时间0.1+结构0.4+数据量0.5）
+ * - clusterall: 全局聚类 + FDA降维
+ * - clusterlocal: 局部聚类 + FDA降维（论文核心方法）
+ * - nonoutlier: 排除离群点后聚类
+ * - localtime: 仅时间权重
+ * - localamount: 仅数据量权重
+ * - localstruct: 仅结构权重（扇出）
+ * - fanout: 仅扇出权重
+ * - nonmlrandom: 随机权重（基线对比）
+ * 
+ * @author fang
+ * @date 2018/4/6
  */
 @SuppressWarnings("Duplicates")
 public class ProcessOneLogCMD_19 {
+    // 统计文件输出流
     static OutputStream os = null;
+    // 前向分析时选择的Top N入口点数量
     public static int topStarts = 3; // parameter for choosing top N starts for forward analysis
 
+    /**
+     * process_backward - 处理单条日志的反向溯源分析（包含图构建）
+     * 
+     * 本方法会先从日志文件构建依赖图，然后调用run_exp_backward进行反向溯源分析。
+     * 适用于日志文件尚未被解析成图的情况。
+     * 
+     * @param resultDir 结果输出目录
+     * @param suffix 文件名后缀
+     * @param threshold 阈值
+     * @param trackOrigin 是否追踪源头
+     * @param logfile 日志文件路径
+     * @param IP 本地IP地址数组
+     * @param detection POI检测点（恶意事件）
+     * @param highRP 高可信实体数组
+     * @param midRP 中可信实体数组
+     * @param lowRP 低可信实体数组
+     * @param filename 日志文件名（不含路径）
+     * @param detectionSize 检测到的数据量
+     * @param seedSources 种子源集合
+     * @param criticalEdges 关键边数组（用于评估）
+     * @param mode 权重计算模式
+     * @param jsonLog JSON日志对象
+     */
     public static void process_backward(String resultDir, String suffix, double threshold, boolean trackOrigin,
             String logfile, String[] IP, String detection, String[] highRP, String[] midRP, String[] lowRP,
             String filename, double detectionSize, Set<String> seedSources, String[] criticalEdges, String mode,
             JSONObject jsonLog) {
         OutputStream weightfile = null;
         try {
+            // 打开统计文件
             os = new FileOutputStream(resultDir + filename + suffix + "_stats");
+            
+            // 1. 从日志文件构建依赖图
             GetGraph getGraph = new GetGraph(logfile, IP);
             long startTime = System.currentTimeMillis();
             getGraph.GenerateGraph();
             DirectedPseudograph<EntityNode, EventEdge> orignal = getGraph.getJg();
+            
+            // 输出原始图的统计信息
             System.out.println("Original vertex number:" + orignal.vertexSet().size() + " edge number : "
                     + orignal.edgeSet().size());
             os.write(("Original vertex number:" + orignal.vertexSet().size() + " edge number : "
                     + orignal.edgeSet().size() + "\n").getBytes());
+            
             long endTime = System.currentTimeMillis();
             double timeCost = getTimeCost(startTime, endTime);
             System.out.println("Build Original Graph time cost is: " + timeCost);
             os.write(("Build Original Graph time cost is: " + timeCost + "\n").getBytes());
+            
+            // 记录到JSON日志
             jsonLog.put("origionVertexNumber", orignal.vertexSet().size());
             jsonLog.put("origionEdgeNumber", orignal.edgeSet().size());
             jsonLog.put("CostForOrigionGraph", timeCost);
+            
+            // 2. 执行反向溯源分析
             run_exp_backward(orignal, resultDir, suffix, threshold, trackOrigin, logfile, IP, detection, highRP, midRP,
                     lowRP, filename, detectionSize, seedSources, criticalEdges, mode, jsonLog, new String[0]);
 
@@ -227,6 +288,37 @@ public class ProcessOneLogCMD_19 {
         }
     }
 
+    /**
+     * run_exp_backward - 反向溯源分析核心方法
+     * 
+     * 完整处理流程：
+     * 1. BackTrack - 后向切片：从POI检测点反向追踪，保留所有能到达POI的路径
+     * 2. CPR - 因果保持压缩：合并时间窗口内的连续同操作
+     * 3. 权重计算：根据mode选择不同策略（聚类/非ML/扇出等）
+     * 4. PageRank传播：后向迭代传播恶意度分数
+     * 5. 入口点识别：找出候选攻击入口
+     * 6. 前向分析：验证从入口点到POI的因果路径
+     * 7. LLM过滤（可选）：使用大语言模型进一步精简攻击路径
+     * 
+     * @param orignal 完整的依赖图
+     * @param resultDir 结果输出目录
+     * @param suffix 文件名后缀
+     * @param threshold 阈值
+     * @param trackOrigin 是否追踪源头
+     * @param logfile 日志文件路径
+     * @param IP 本地IP地址
+     * @param detection POI检测点
+     * @param highRP 高可信实体
+     * @param midRP 中可信实体
+     * @param lowRP 低可信实体
+     * @param filename 文件名
+     * @param detectionSize 检测数据量
+     * @param seedSources 种子源
+     * @param criticalEdges 关键边
+     * @param mode 权重模式
+     * @param jsonlog JSON日志
+     * @param importantEntries 重要入口点
+     */
     // backtrack + backward propagate
     public static void run_exp_backward(DirectedPseudograph<EntityNode, EventEdge> orignal, String resultDir,
             String suffix, double threshold, boolean trackOrigin, String logfile, String[] IP, String detection,

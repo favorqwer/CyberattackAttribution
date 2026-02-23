@@ -12,26 +12,82 @@ import java.util.List;
 import java.util.Properties;
 import java.util.*;
 
+/**
+ * Experiment - 实验配置类
+ * 
+ * 本类负责解析配置文件（.property文件），提取溯源分析所需的各种参数。
+ * 
+ * 配置文件格式示例（wget.backward文件）：
+ * <pre>
+ * POI=/tmp/malicious_file.txt          # 检测点（恶意文件/网络连接）
+ * highRP=/bin/ls,192.168.1.1:80       # 高可信实体（正常进程/可信IP）
+ * lowRP=192.168.1.100:44444           # 低可信实体（可疑IP/临时文件）
+ * midRP=/lib64/libc.so.6              # 中可信实体（可选，扩展白名单）
+ * detectionSize=1024                  # 检测到的数据量
+ * threshold=0                         # 阈值
+ * trackOrigin=false                   # 是否追踪源头
+ * criticalEdge=edge1;edge2            # 关键边（用于评估）
+ * entry=entry1,entry2                 # 预定义的入口点
+ * </pre>
+ * 
+ * 配置项说明：
+ * - POI: Point of Interest，检测点/恶意事件，是溯源分析的起点
+ * - highRP: 高可信实体列表，声誉分数初始化为1.0
+ * - lowRP: 低可信实体列表，声誉分数初始化为0.0  
+ * - midRP: 中可信实体列表，声誉分数初始化为0.5
+ * - detectionSize: 检测到的数据量（字节），用于计算数据量权重
+ * - threshold: 阈值参数
+ * - trackOrigin: 是否追踪源头
+ * - criticalEdge: 关键边，用于评估溯源结果的准确性
+ * - entry: 预定义的入口点（用于验证）
+ * 
+ * @author fang
+ */
 public class Experiment {
+    // 配置属性对象
     Properties config;
+    // 配置文件对象
     File configFile;
+    // 日志文件对象
     File log;
+    // POI检测点（恶意事件）
     public String POI;
+    // 高可信实体数组
     public String[] highRP;
+    // 低可信实体数组
     public String[] lowRP;
+    // 中可信实体数组
     public String[] midRP;
+    // 阈值
     double threshold;
+    // 检测数据量
     double detectionSize;
+    // 是否追踪源头
     boolean trackOrigin;
+    // 关键边数组（用于评估）
     String[] criticalEdges;
+    // 关键节点数组
     public String[] criticalNodes;
+    // 重要进程入口
     public String[] importantProcessStarts;
+    // 重要文件入口
     public String[] importantFileStarts;
+    // 重要IP入口
     public String[] importantIPStarts;
+    // 预定义入口点
     public String[] entries;
+    // DOT文件路径
     public String pathToDot;
+    // DOT文件对象
     File dotFile;
 
+    /**
+     * 构造函数 - 从日志文件和配置文件创建实验
+     * 
+     * @param logFile 日志文件
+     * @param configFile 配置文件（.property）
+     * @throws IOException 如果文件读取失败
+     */
     public Experiment(File logFile, File configFile) throws IOException {
         FileInputStream fi = new FileInputStream(configFile);
         log = logFile;
@@ -41,6 +97,12 @@ public class Experiment {
         digestConfig();
     }
 
+    /**
+     * 构造函数 - 仅从配置文件创建实验
+     * 
+     * @param configFile 配置文件
+     * @throws IOException 如果文件读取失败
+     */
     public Experiment(File configFile) throws IOException {
         FileInputStream fi = new FileInputStream(configFile);
         log = null;
@@ -55,6 +117,24 @@ public class Experiment {
         dotFile = new File(pathToDot);
     }
 
+    /**
+     * digestConfig - 解析配置文件方法
+     * 
+     * 从配置文件中读取并解析各个配置项：
+     * - POI: 检测点
+     * - highRP: 高可信实体（逗号分隔）
+     * - lowRP: 低可信实体
+     * - midRP: 中可信实体（合并默认配置和自定义配置）
+     * - threshold: 阈值
+     * - trackOrigin: 是否追踪源头
+     * - detectionSize: 检测数据量
+     * - criticalEdge: 关键边（分号分隔）
+     * - criticalNodes: 关键节点
+     * - importantFileStarts: 重要文件入口
+     * - importantProcessStarts: 重要进程入口
+     * - importantIPStarts: 重要IP入口
+     * - entry: 预定义入口点
+     */
     private void digestConfig(){
         POI = config.getProperty("POI");
 

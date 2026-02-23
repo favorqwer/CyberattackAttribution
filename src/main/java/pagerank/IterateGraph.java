@@ -1,5 +1,19 @@
-package pagerank;/*The function here include bfs and output methods*/
-
+package pagerank;
+/**
+ * IterateGraph - 图遍历与输出工具类
+ * 
+ * 本类提供图遍历、节点查找、子图提取、图导出等功能。
+ * 
+ * 主要功能：
+ * 1. BFS遍历：从指定节点开始进行广度优先遍历
+ * 2. 节点查找：根据签名（signature）查找图中的节点
+ * 3. 图导出：将图导出为DOT格式（可被Graphviz渲染为图片）
+ * 4. 节点声誉查询：获取节点的恶意度分数
+ * 5. 入口点识别：根据节点声誉识别可能的攻击入口点
+ * 6. 前向分析：结合后向切片和前向追踪，生成最终的攻击路径图
+ * 
+ * @author fang
+ */
 
 import net.bytebuddy.dynamic.loading.ClassInjector;
 import org.jgrapht.Graph;
@@ -15,20 +29,36 @@ import java.math.BigDecimal;
 import java.util.*;
 
 public class IterateGraph {
+    // 输入的依赖图
     DirectedPseudograph<EntityNode, EventEdge> inputgraph;
+    // DOT格式导出器
     DOTExporter<EntityNode, EventEdge> exporter;
+    // 节点索引表：用于根据签名快速查找节点
     Map<String, EntityNode> indexOfNode;
 
+    /**
+     * 构造函数
+     * 
+     * @param graph 输入的依赖图
+     */
     IterateGraph(DirectedPseudograph<EntityNode, EventEdge> graph){
 
         this.inputgraph = graph;
+        // 创建DOT导出器（包含节点属性）
         exporter = new DOTExporter<EntityNode, EventEdge>(new EntityIdProvider(),new EntityNameProvider(), new EventEdgeProvider(),new EntityAttributeProvider(),null);
+        // 构建节点索引表
         indexOfNode = new HashMap<>();
         for(EntityNode n : graph.vertexSet()){
             indexOfNode.put(n.getSignature(), n);
         }
     }
 
+    /**
+     * BFS遍历 - 从指定节点开始广度优先遍历
+     * 
+     * @param input 节点签名
+     * @return 包含所有可达节点的子图
+     */
     public DirectedPseudograph<EntityNode, EventEdge> bfs(String input){
         EntityNode start = getGraphVertex(input);
         Queue<EntityNode> queue = new LinkedList<EntityNode>();
@@ -76,6 +106,14 @@ public class IterateGraph {
     }
 
 
+    /**
+     * exportGraph - 将图导出为DOT格式文件
+     * 
+     * DOT格式是一种文本图形描述语言，可被Graphviz工具渲染为PNG/SVG等图片格式。
+     * 导出的文件会保存在与程序相同目录（或指定路径），后缀为.dot
+     * 
+     * @param fileName 输出文件名（不含后缀）
+     */
     /* input is file name  output is a new dot file*/
     public void exportGraph (String fileName){
         try {

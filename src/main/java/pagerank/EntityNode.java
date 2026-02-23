@@ -3,18 +3,45 @@ package pagerank;
 import java.util.Map;
 
 /**
- * Created by fang on 3/21/18.
+ * EntityNode - 图节点类（实体节点）
+ * 
+ * 本类代表依赖图中的节点，对应系统中的一个实体。
+ * 实体有三种类型：
+ * 1. Process（进程）：系统进程，用Process对象表示
+ * 2. File（文件）：文件路径，用FileEntity对象表示
+ * 3. Network（网络）：网络连接，用NetworkEntity对象表示
+ * 
+ * 节点属性：
+ * - ID: 实体唯一标识符
+ * - signature: 实体签名（用于显示和查找）
+ * - reputation: 恶意度分数（0.0-1.0，1.0表示可信，0.0表示可疑）
+ * - attributes: 其他属性（可选）
+ * 
+ * @author fang
+ * @date 2018/3/21
  */
 public class EntityNode{
     //Entity m;
+    // 实体唯一标识符
     private long ID;
+    // 文件实体（如果此节点是文件类型）
     private FileEntity f;
+    // 网络实体（如果此节点是网络类型）
     private NetworkEntity n;
+    // 进程实体（如果此节点是进程类型）
     private Process p;
+    // 实体签名（用于显示和查找）
     private String signature;
+    // 恶意度分数：0.0（可疑）~ 1.0（可信）
     double reputation;
+    // 其他属性（可选）
     Map<String, String>attributes;
 
+    /**
+     * 构造函数 - 从文件实体创建节点
+     * 
+     * @param f 文件实体
+     */
     public EntityNode(FileEntity f){
         this.f = f;
         this.ID = f.getUniqID();
@@ -24,6 +51,11 @@ public class EntityNode{
         reputation = f.getReputation();
     }
 
+    /**
+     * 构造函数 - 从进程实体创建节点
+     * 
+     * @param p 进程实体
+     */
     public EntityNode(Process p){
         this.p = p;
         f = null;
@@ -33,6 +65,11 @@ public class EntityNode{
         reputation = p.getReputation();
     }
 
+    /**
+     * 构造函数 - 从网络实体创建节点
+     * 
+     * @param n 网络实体
+     */
     public EntityNode(NetworkEntity n){
         this.n = n;
         f = null;
@@ -42,6 +79,11 @@ public class EntityNode{
         reputation = n.getReputation();
     }
 
+    /**
+     * 拷贝构造函数
+     * 
+     * @param e 要拷贝的节点
+     */
     EntityNode(EntityNode e) {
         this.f = e.getF();
         this.n = e.getN();

@@ -15,9 +15,37 @@ import java.util.Random;
 
 
 /**
- * Created by fang on 3/12/18.
- *
- * Edited by Peng Gao on 10/31/18.
+ * BackwardPropagate_pf - 权重计算与PageRank传播核心类
+ * 
+ * 本类实现论文的核心算法：后向影响传播（Backward Propagation）
+ * 
+ * 整体流程分为两步：
+ * 1. 特征权重计算（Feature Weight Calculation）
+ * 2. PageRank式恶意度传播（PageRank-style Propagation）
+ * 
+ * === 第一步：特征权重计算 ===
+ * 为每条边计算三个维度的权重特征：
+ * - 时间权重（timeWeight）：基于边的时间间隔，越接近POI时间权重越高
+ * - 数据量权重（amountWeight）：基于传输的数据量，越大数据量权重越高
+ * - 结构权重（structureWeight）：基于节点的扇出度，扇出越多权重越低（避免噪音扩散）
+ * 
+ * 支持多种权重计算模式：
+ * - calculateWeights(): 非ML方法，手动设置权重比例
+ * - calculateWeights_ML_dec(): 基于聚类+FDA降维的机器学习方法
+ * - calculateWeights_Fanout(): 仅使用扇出特征
+ * - calculateWeightsRandom(): 随机权重（基线对比）
+ * 
+ * === 第二步：PageRank传播 ===
+ * 使用类似PageRank的迭代算法，将恶意度从已知的可疑节点（lowRP）传播到其他节点：
+ * 1. 初始化：highRP=1.0, lowRP=0.0, 其他=0.5
+ * 2. 迭代：每个节点从出边接收恶意度，根据边权重加权
+ * 3. 收敛：迭代直到所有节点分数变化小于阈值
+ * 4. 结果：得分越高的节点越可能是攻击入口
+ * 
+ * @author fang
+ * @date 2018/3/12
+ * @editor Peng Gao
+ * @date 2018/10/31
  */
 import java.io.File;
 import java.io.FileWriter;
@@ -31,19 +59,37 @@ import org.json.simple.JSONObject;
 
 @SuppressWarnings("Duplicates")
 public class  BackwardPropagate_pf {
+    // 输入的依赖图（CPR压缩后的图）
     DirectedPseudograph<EntityNode, EventEdge> graph;
+    // POI（检测点）的时间戳
     /* the input  need to finish split step before this(this parameter need to run relevant functions first)*/
     private BigDecimal POITime;
+    // 图遍历工具
     IterateGraph graphIterator;
+    // 最终综合权重
     Map<Long, Double> weights;
+    // 时间维度权重
     Map<Long, Double> timeWeights; // sink -> source
+    // 数据量维度权重
     Map<Long, Double> amountWeights;
+    // 结构维度权重（扇出度）
     Map<Long, Double> structureWeights;
+    // 阻尼因子（PageRank算法参数，默认0.85）
     double dumpingFactor;
+    // 检测到的数据量（用于计算数据量权重）
     double detectionSize; // this value used to calculate amountWeight, default value is zero.
+    // 种子源集合（用于分配结构权重）
     Set<String> seedSources;  // get signature of seedSources in order to assign structure weight
+    // 原始完整图（用于前向分析验证）
     DirectedPseudograph<EntityNode, EventEdge> originalGraph;
+    // 前向分析工具
     ForwardAnalysis forwardAnalysis;
+    
+    /**
+     * 构造函数
+     * 
+     * @param input CPR压缩后的依赖图
+     */
     BackwardPropagate_pf (DirectedPseudograph<EntityNode, EventEdge> input){
         graph = input;
         graphIterator = new IterateGraph(graph);
@@ -52,20 +98,39 @@ public class  BackwardPropagate_pf {
         amountWeights = new HashMap<>();
         structureWeights = new HashMap<>();
         POITime = getPOITime();
-        dumpingFactor = 0.85;
+        dumpingFactor = 0.85;  // PageRank标准阻尼因子
         detectionSize = 0;
         indegree = new HashMap<>();
         outdegree = new HashMap<>();
     }
+    // 入度映射（节点签名 -> 入边数量）
     Map<String, Integer> indegree;
+    // 出度映射（节点签名 -> 出边数量）
     Map<String, Integer> outdegree;
 
 
+    /**
+     * 设置检测数据量
+     * 
+     * @param value 检测到的数据量（字节数）
+     */
     public void setDetectionSize(double value){
         System.out.println("setDetection invoked: "+value);
         detectionSize = value;
     }
 
+    /**
+     * calculateWeights - 非机器学习的权重计算方法
+     * 
+     * 手动设置三个维度的权重比例：
+     * - 当数据量>0时：时间0.334 + 结构0.333 + 数据量0.333
+     * - 当数据量=0时：时间0.5 + 结构0.5（只考虑两个维度）
+     * 
+     * 计算步骤：
+     * 1. 计算每条边的原始权重（时间、数据量、结构）
+     * 2. 按出边进行归一化
+     * 3. 计算最终综合权重
+     */
     public void calculateWeights(){
         System.out.println("calculateWeights invoked");
         Set<EntityNode> vertexSet = graph.vertexSet();
