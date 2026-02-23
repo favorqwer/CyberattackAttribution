@@ -1,3 +1,0 @@
-POI=/var/vpnfilter
-detectionSize=296592
-lowRP=172.31.71.251:33982->172.31.77.48:80

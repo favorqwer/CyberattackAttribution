@@ -1,7 +1,0 @@
-digraph G {
-  3526 [ label="8832curl [0.0]" shape="box" ];
-  3552 [ label="192.168.122.129:47160->192.168.122.128:4444 [0.0]" shape="parallelogram" ];
-  2228 [ label="/etc/passwd [0.0]" shape="ellipse" ];
-  3526 -> 3552 [ label="81557 0.11062508674819564" ];
-  2228 -> 3526 [ label="3192 0.99" ];
-}

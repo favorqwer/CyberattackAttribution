@@ -1,4 +1,0 @@
-POI=172.31.77.48:35330->172.31.71.251:44444
-detectionSize=1
-lowRP=21376bdoor
-criticalEdge=21376bdoor,172.31.77.48:35330->172.31.71.251:44444;172.31.77.48:35330->172.31.71.251:44444,21376bash;/usr/local/thttpd/www/cgi-bin/env.cgi,22548env.cgi;22548env.cgi,/usr/local/thttpd/www/cgi-bin/env.cgi;/usr/local/thttpd/www/cgi-bin/ping.cgi,24306ping.cgi;24306ping.cgi,172.31.77.48:35330->172.31.71.251:44444;21515id,172.31.77.48:35330->172.31.71.251:44444;

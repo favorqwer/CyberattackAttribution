@@ -1,4 +1,5 @@
 package pagerank.algorithm;
+
 import pagerank.entity.EntityNode;
 import pagerank.entity.Event;
 import pagerank.entity.EventEdge;
@@ -168,16 +169,19 @@ public class LLMGraphFilter {
         return "You are a cybersecurity expert analyzing a provenance graph to track an attack. " +
                 "The graph describes system entities (processes, files, networks) and events (syscalls) between them. "
                 +
-                "The graph might contain noise (normal system activities) alongside the true attack path.\n\n" +
+                "The graph might contain noise (normal system activities) alongside the true attack behavior.\n\n" +
                 "The known attack target is:\n" +
                 poiEvent + "\n\n" +
                 "Here are the possible attack entry points:\n" +
                 String.join(", ", entryPoints) + "\n\n" +
                 "Here is the provenance graph data:\n" + graphText + "\n\n" +
-                "Please analyze the causal relationships and identify the critical path starting from any of the possible attack entry points and ending at the known attack target. "
+                "Please analyze the causal relationships and identify the entire attack subgraph that connects any of the possible attack entry points to the known attack target. "
                 +
-                "This path represents the core attack behavior. Ignore irrelevant noise edges.\n" +
-                "Output the IDs of the edges that belong to the true attack path. " +
+                "Keep in mind that the attack behavior might not be a single strict path. It can involve multiple branches, such as creating, reading, moving, or archiving intermediate sensitive files, or spawning various processes. "
+                +
+                "You must include ALL edges that are causally related to the core attack behavior, including accesses to intermediate files. Ignore irrelevant noise edges.\n"
+                +
+                "Output the IDs of the edges that belong to the true attack subgraph. " +
                 "Format your output clearly, and at the end of your response, provide a comma-separated list of the kept EdgeIDs enclosed in brackets like this: [EdgeID1, EdgeID2, ...]";
     }
 
@@ -358,6 +362,7 @@ public class LLMGraphFilter {
      * 遍历原始图中的边，如果该边的 ID 在保留集合内，则将其自身以及其相连的端点节点复制到新的子图中。
      *
      * 同时进行后处理：补充保留从入口点可达的节点的所有出边，确保不遗漏任何攻击分支。
+     * 
      * @param originalGraph 原始的大图对象
      * @param keptEdgeIds   LLM 判定需要保留并且属于因果攻击路径的边 ID 集合
      * @return 新生成的精简后的溯源子图

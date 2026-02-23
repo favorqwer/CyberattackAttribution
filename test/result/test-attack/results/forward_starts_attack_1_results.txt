@@ -1,5 +1,0 @@
-Entry Points for forward:
-192.168.122.129:35082->192.168.122.128:8000
-/usr/bin/gzip
-/bin/sh
-/lib/x86_64-linux-gnu/libpcre2-8.so.0
