@@ -534,10 +534,10 @@ public class ProcessOneLogCMD_19 {
     }
 
     public static void filter_graph_by_forward_category(List<List<String>> starts,
-            DirectedPseudograph<EntityNode, EventEdge> orignal,
-            String method, String resultDir, String filename, String suffix,
-            String time, int startLimitForEachCategory,
-            BackwardPropagate_pf infer, boolean outputGraph, String poiEvent) {
+                                                        DirectedPseudograph<EntityNode, EventEdge> orignal,
+                                                        String method, String resultDir, String filename, String suffix,
+                                                        String time, int startLimitForEachCategory,
+                                                        BackwardPropagate_pf infer, boolean outputGraph, String poiEvent) {
         try {
             File resFolderForFilter = new File(resultDir + "/" + method);
             if (!resFolderForFilter.exists()) {
@@ -554,19 +554,13 @@ public class ProcessOneLogCMD_19 {
                 for (int r = 0; r < startLimitForEachCategory && r < category.size(); r++) {
                     String entry = category.get(r);
                     printWriter.println(entry);
+
+                    // 将入口点暂存在内存列表中，供后续一并生成完整图
                     allSelectedStarts.add(entry);
 
-                    DirectedPseudograph<EntityNode, EventEdge> filtered = infer
-                            .combineBackwardAndForwardForGivenStart(entry, orignal);
+                    // [修改]：移除了单节点图 combineBackwardAndForwardForGivenStart 的计算
+                    // [修改]：移除了单节点图 exportGraph 和 DotToSvg 的磁盘 I/O 操作
 
-                    if (outputGraph) {
-                        IterateGraph out = new IterateGraph(filtered);
-                        String dotPath = resFolderForFilter.getAbsolutePath() + "/" +
-                                "filtered_by_forward_" + startsNum + "_" + filename + "_" + method + suffix;
-                        out.exportGraph(dotPath);
-                        // ======== 新增：自动转换为 SVG ========
-                        DotToSvg(dotPath + ".dot", dotPath + ".svg");
-                    }
                     startsNum++;
                 }
             }
@@ -577,6 +571,7 @@ public class ProcessOneLogCMD_19 {
                 System.out.println("Generating complete provenance graph with all entry points merged, total "
                         + allSelectedStarts.size() + " entries...");
 
+                // 使用内存中暂存的所有入口点，一次性生成完整的溯源图
                 DirectedPseudograph<EntityNode, EventEdge> allInOneGraph = infer
                         .combineBackwardAndForwardForMultipleStarts(allSelectedStarts, orignal);
 
@@ -585,7 +580,6 @@ public class ProcessOneLogCMD_19 {
                         "complete_provenance_graph_" + filename + "_" + method + suffix;
 
                 mergedOut.exportGraph(mergedPath);
-                // ======== 新增：自动转换为 SVG ========
                 DotToSvg(mergedPath + ".dot", mergedPath + ".svg");
 
                 System.out.println("Complete provenance graph generated successfully (" + allSelectedStarts.size()
@@ -594,29 +588,21 @@ public class ProcessOneLogCMD_19 {
                 System.out.println("Vertices: " + allInOneGraph.vertexSet().size() + "   Edges: "
                         + allInOneGraph.edgeSet().size());
 
-                // ======== 新增：利用 LLM 过滤图 ========
+                // ======== 利用 LLM 过滤图 ========
                 try {
                     System.out.println("Starting LLM Filtering Process...");
-                    // 初始化预定义的 LLM 过滤类，会自动读取配置
                     LLMGraphFilter llmFilter = new LLMGraphFilter();
 
-                    // 将发送和接收的文本保存为 .log 日志，与其他日志(如attack.log)存放在相同的目录(resultDir)下
                     String llmLogPath = new File(resultDir,
                             "llm_interaction_" + filename + "_" + method + suffix + ".log").getAbsolutePath();
 
-                    // 将前面合成的包含所有可能入口点及其追踪路径的完整大杂烩图 (allInOneGraph)
-                    // 和这些被挑出的入口点集合 (allSelectedStarts) 传给过滤器。
-                    // 提取并清洗后的入口节点以及系统传出的检测点(poiEvent)发给大模型进行最终判断过滤
                     DirectedPseudograph<EntityNode, EventEdge> llmFilteredGraph = llmFilter.filterGraph(allInOneGraph,
                             allSelectedStarts, poiEvent, llmLogPath);
 
-                    // 实例化 IterateGraph 组件用于图的 I/O 输出
                     IterateGraph filteredOut = new IterateGraph(llmFilteredGraph);
-                    // 为最终 LLM 过滤结果定一个专门名称以便同其他基于启发式规则生成的图有所区分
                     String filteredPath = resFolderForFilter.getAbsolutePath() + "/" +
                             "llm_filtered_graph_" + filename + "_" + method + suffix;
 
-                    // 将精简后的图输出为 .dot 并转成直观可读的 .svg 文件
                     filteredOut.exportGraph(filteredPath);
                     DotToSvg(filteredPath + ".dot", filteredPath + ".svg");
 
@@ -636,8 +622,8 @@ public class ProcessOneLogCMD_19 {
     }
 
     public static void filter_graph_by_forward(List<String> start, DirectedPseudograph<EntityNode, EventEdge> orignal,
-            String method, String resultDir, String filename, String suffix, String time, BackwardPropagate_pf infer,
-            boolean output) {
+                                               String method, String resultDir, String filename, String suffix, String time, BackwardPropagate_pf infer,
+                                               boolean output) {
         try {
             File resFolderForFilter = new File(resultDir + "/" + method);
             if (!resFolderForFilter.exists()) {
@@ -655,21 +641,20 @@ public class ProcessOneLogCMD_19 {
             int startsNum = 0;
             for (String s : start) {
                 printWriter.println(s);
+
+                // 保留图构建仅为了打印节点数量进行调试/日志记录
                 DirectedPseudograph<EntityNode, EventEdge> backresFilteredByForwad = infer
                         .combineBackwardAndForwardForGivenStart(s, orignal);
                 System.out.println("Size of randome start: " + backresFilteredByForwad.vertexSet().size());
-                IterateGraph out = new IterateGraph(backresFilteredByForwad);
-                if (output) {
-                    out.exportGraph(folderForFtime.getAbsolutePath() + "/" + "filtered_by_forward_"
-                            + String.valueOf(startsNum) + "_" + filename + "_" + method + suffix);
-                }
+
+                // [修改]：完全移除了各个独立随机图文件的输出和导出代码
+
                 startsNum++;
             }
             printWriter.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
-
     }
 
     public static double[] getMissingRateAndRedundantRate(DirectedPseudograph<EntityNode, EventEdge> graph,
