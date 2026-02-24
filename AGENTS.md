@@ -73,25 +73,56 @@
 ```
 src/main/java/
 ├── pagerank/                    # 核心算法
-│   ├── Entity.java              # 实体基类
-│   ├── EntityNode.java          # 图节点(封装Process/File/Network)
-│   ├── EventEdge.java           # 图边(事件)
-│   ├── GetGraph.java            # 从日志构建依赖图
-│   ├── BackTrack.java           # 后向切片算法
-│   ├── CausalityPreserve.java   # 因果保持压缩
-│   ├── BackwardPropagate.java   # 权重计算(旧版)
-│   ├── BackwardPropagate_pf.java # 权重计算 + PageRank传播
-│   ├── ForwardAnalysis.java     # 前向分析
-│   ├── IterateGraph.java        # 图遍历和导出
-│   ├── LLMGraphFilter.java     # LLM图过滤模块
-│   ├── ProcessOneLogCMD_19.java # 实验流程(含LLM调用)
-│   ├── ExperimentRunnerCmd.java # 主入口(命令行)
-│   ├── Experiment.java          # 实验配置解析
-│   ├── MetaConfig.java          # 系统配置(本地IP、系统调用白名单)
-│   └── ...
+│   ├── algorithm/                # 核心算法实现
+│   │   ├── BackTrack.java           # 后向切片算法
+│   │   ├── CausalityPreserve.java   # 因果保持压缩
+│   │   ├── BackwardPropagate.java   # 权重计算(旧版)
+│   │   ├── BackwardPropagate_pf.java # 权重计算 + PageRank传播
+│   │   ├── ForwardAnalysis.java     # 前向分析
+│   │   ├── GetGraph.java            # 从日志构建依赖图
+│   │   ├── IterateGraph.java        # 图遍历和导出
+│   │   ├── LLMGraphFilter.java     # LLM图过滤模块
+│   │   └── NODOZE.java              # 无用模块(可忽略)
+│   ├── entity/                   # 核心实体类
+│   │   ├── Entity.java              # 实体基类
+│   │   ├── EntityNode.java          # 图节点(封装Process/File/Network)
+│   │   ├── EventEdge.java           # 图边(事件)
+│   │   ├── EventEdgeWrapper.java    # 事件边封装类
+│   │   ├── Event.java               # 事件基类
+│   │   ├── Process.java             # 进程实体
+│   │   ├── FileEntity.java          # 文件实体
+│   │   ├── NetworkEntity.java       # 网络实体
+│   │   ├── PtoPEvent.java           # PtoP事件实现
+│   │   ├── PtoFEvent.java           # PtoF事件实现
+│   │   ├── FtoPEvent.java           # FtoP事件实现
+│   │   ├── PtoNEvent.java           # PtoN事件实现
+│   │   └── NtoPEvent.java           # NtoP事件实现
+│   ├── provider/                 # 数据提供器
+│   │   ├── EntityAttributeProvider.java # 实体属性提供器
+│   │   ├── EntityIdProvider.java     # 实体ID提供器
+│   │   ├── EntityNameProvider.java   # 实体名称提供器
+│   │   ├── EdgeAmountTimeProvider.java # 边数量时间提供器
+│   │   └── EventEdgeProvider.java   # 事件边提供器
+│   ├── main/                    # 主程序入口
+│   │   ├── Experiment.java          # 实验配置解析
+│   │   ├── ExperimentRunnerCmd.java # 主入口(命令行)
+│   │   └── ProcessOneLogCMD_19.java # 实验流程(含LLM调用)
+│   └── config/                  # 配置文件
+│       └── MetaConfig.java          # 系统配置(本地IP、系统调用白名单)
 └── logparsers/                  # 日志解析
     ├── SysdigOutputParser.java  # Sysdig日志解析器
+    ├── SysdigOutputParserNoRegex.java # 无正则表达式版本
+    ├── Utils.java               # 工具类
+    ├── exceptions/              # 异常处理
+    │   ├── UnknownEventException.java
+    │   ├── ParentNotSeenException.java
+    │   ├── InvalidLogFormatException.java
+    │   └── EventStartUnseenException.java
     └── systemcalls/             # 系统调用定义
+        ├── SystemCall.java
+        ├── SystemCallFactory.java
+        ├── Action.java
+        └── Fingerprint.java
 ```
 
 ## 输入格式
@@ -164,8 +195,8 @@ localIP = {"127.0.0.1"}           # 本地IP地址
 ptopSystemCall = {"execve"}        # P2P事件系统调用
 ptofSystemCall = {"write","writev"} # P2F事件系统调用
 ftopSystemCall = {"read","readv"}  # F2P事件系统调用
-ptonSystemCall = {"sendto","write",...} # P2N事件系统调用
-ntopSystemCall = {"read","recvmsg",...} # N2P事件系统调用
+ptonSystemCall = {"sendto","write","writev", "sendmsg"} # P2N事件系统调用
+ntopSystemCall = {"read", "recvmsg", "recvfrom","readv"} # N2P事件系统调用
 ```
 
 ## 依赖库
