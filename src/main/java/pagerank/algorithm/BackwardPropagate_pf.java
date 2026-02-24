@@ -1,64 +1,26 @@
 package pagerank.algorithm;
 
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.math3.linear.*;
+import org.apache.commons.math3.ml.clustering.Cluster;
+import org.apache.commons.math3.ml.clustering.DBSCANClusterer;
+import org.apache.commons.math3.ml.clustering.KMeansPlusPlusClusterer;
+import org.apache.commons.math3.ml.clustering.MultiKMeansPlusPlusClusterer;
+import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import org.jgrapht.alg.connectivity.ConnectivityInspector;
+import org.jgrapht.graph.DirectedPseudograph;
+import org.json.simple.JSONArray;
 import pagerank.entity.EntityNode;
 import pagerank.entity.EventEdge;
 import pagerank.entity.EventEdgeWrapper;
 
-import net.bytebuddy.dynamic.scaffold.MethodGraph;
-import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.math3.linear.*;
-import org.apache.commons.math3.ml.clustering.*;
-import org.apache.commons.math3.ml.clustering.evaluation.ClusterEvaluator;
-import org.apache.commons.math3.ml.clustering.evaluation.SumOfClusterVariances;
-import org.apache.commons.math3.ml.distance.EuclideanDistance;
-import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
-import org.jgrapht.graph.DirectedPseudograph;
-import org.jgrapht.alg.*;
-import static org.junit.Assert.*;
-import java.util.Random;
-
-/**
- * BackwardPropagate_pf - 权重计算与PageRank传播核心类
- * 
- * 本类实现论文的核心算法：后向影响传播（Backward Propagation）
- * 
- * 整体流程分为两步：
- * 1. 特征权重计算（Feature Weight Calculation）
- * 2. PageRank式恶意度传播（PageRank-style Propagation）
- * 
- * === 第一步：特征权重计算 ===
- * 为每条边计算三个维度的权重特征：
- * - 时间权重（timeWeight）：基于边的时间间隔，越接近POI时间权重越高
- * - 数据量权重（amountWeight）：基于传输的数据量，越大数据量权重越高
- * - 结构权重（structureWeight）：基于节点的扇出度，扇出越多权重越低（避免噪音扩散）
- * 
- * 支持多种权重计算模式：
- * - calculateWeights(): 非ML方法，手动设置权重比例
- * - calculateWeights_ML_dec(): 基于聚类+FDA降维的机器学习方法
- * - calculateWeights_Fanout(): 仅使用扇出特征
- * - calculateWeightsRandom(): 随机权重（基线对比）
- * 
- * === 第二步：PageRank传播 ===
- * 使用类似PageRank的迭代算法，将恶意度从已知的可疑节点（lowRP）传播到其他节点：
- * 1. 初始化：highRP=1.0, lowRP=0.0, 其他=0.5
- * 2. 迭代：每个节点从出边接收恶意度，根据边权重加权
- * 3. 收敛：迭代直到所有节点分数变化小于阈值
- * 4. 结果：得分越高的节点越可能是攻击入口
- * 
- * @author fang
- * @date 2018/3/12
- * @editor Peng Gao
- * @date 2018/10/31
- */
 import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
 import java.math.BigDecimal;
 import java.util.*;
-import java.util.stream.Collectors;
 
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
+import static org.junit.Assert.assertNotNull;
 
 @SuppressWarnings("Duplicates")
 public class BackwardPropagate_pf {

@@ -1,14 +1,15 @@
 package pagerank.provider;
+
 import pagerank.entity.EventEdge;
 
-import org.jgrapht.ext.ComponentNameProvider;
+import java.util.function.Function;
 
 /**
  * Created by fang on 4/22/18.
  */
-public class EdgeAmountTimeProvider implements ComponentNameProvider<EventEdge> {
+public class EdgeAmountTimeProvider implements Function<EventEdge, String> {
     @Override
-    public String getName(EventEdge e){
-        return e.getSize()+" "+ e.getStartTime().toString()+","+ e.getEndTime().toString();
+    public String apply(EventEdge e) {
+        return e.getSize() + " " + e.getStartTime().toString() + "," + e.getEndTime().toString();
     }
 }

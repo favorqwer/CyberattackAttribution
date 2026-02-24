@@ -2,7 +2,7 @@ package pagerank.algorithm;
 import pagerank.entity.EntityNode;
 import pagerank.entity.EventEdge;
 //import com.sun.org.apache.xpath.internal.SourceTree;
-import org.jgrapht.alg.CycleDetector;
+import org.jgrapht.alg.cycle.CycleDetector;
 import org.jgrapht.graph.DirectedPseudograph;
 
 import java.math.BigDecimal;

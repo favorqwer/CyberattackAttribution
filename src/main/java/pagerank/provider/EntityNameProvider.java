@@ -1,25 +1,26 @@
 package pagerank.provider;
+
 import pagerank.entity.EntityNode;
 
-import org.jgrapht.ext.ComponentNameProvider;
+import java.util.function.Function;
 
 /**
  * Created by fang on 3/21/18.
  */
-public class EntityNameProvider implements ComponentNameProvider<EntityNode> {
+public class EntityNameProvider implements Function<EntityNode, String> {
 
     @Override
-    public String getName(EntityNode e) {
+    public String apply(EntityNode e) {
         String sig = e.getSignature();
-        if(sig.startsWith("=")){
+        if (sig.startsWith("=")) {
             sig = e.getSignature().substring(1);
         }
-//        if(sig.length()>15){                                         //only for writing report
-//            String[] pars = sig.split("/");
-//            int l = pars.length;
-//            sig = l>0? pars[l-1]:sig;
-//        }
-        return sig+" "+"["+ e.reputation+"]";
+        // if(sig.length()>15){ //only for writing report
+        // String[] pars = sig.split("/");
+        // int l = pars.length;
+        // sig = l>0? pars[l-1]:sig;
+        // }
+        return sig + " " + "[" + e.reputation + "]";
     }
 
 }

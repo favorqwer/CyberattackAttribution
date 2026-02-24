@@ -1,15 +1,16 @@
 package pagerank.provider;
+
 import pagerank.entity.EntityNode;
 
-import org.jgrapht.ext.ComponentNameProvider;
+import java.util.function.Function;
 
 /**
  * Created by fang on 3/21/18.
  */
-public class EntityIdProvider implements ComponentNameProvider<EntityNode> {
+public class EntityIdProvider implements Function<EntityNode, String> {
     @Override
-    public String getName(EntityNode e) {
-//        System.out.println(e.getID());
+    public String apply(EntityNode e) {
+        // System.out.println(e.getID());
         return "" + e.getID();
     }
 }

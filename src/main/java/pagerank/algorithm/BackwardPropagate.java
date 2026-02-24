@@ -1,27 +1,25 @@
 package pagerank.algorithm;
+
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.math3.linear.*;
+import org.apache.commons.math3.ml.clustering.Cluster;
+import org.apache.commons.math3.ml.clustering.DBSCANClusterer;
+import org.apache.commons.math3.ml.clustering.KMeansPlusPlusClusterer;
+import org.apache.commons.math3.ml.clustering.MultiKMeansPlusPlusClusterer;
+import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import org.jgrapht.alg.connectivity.ConnectivityInspector;
+import org.jgrapht.graph.DirectedPseudograph;
 import pagerank.entity.EntityNode;
 import pagerank.entity.EventEdge;
 import pagerank.entity.EventEdgeWrapper;
 
-import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.math3.linear.*;
-import org.apache.commons.math3.ml.clustering.*;
-import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
-import org.jgrapht.graph.DirectedPseudograph;
-import org.jgrapht.alg.*;
-import static org.junit.Assert.*;
-
-
-/**
- * Created by fang on 3/12/18.
- *
- * Edited by Peng Gao on 10/31/18.
- */
 import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
 import java.math.BigDecimal;
 import java.util.*;
+
+import static org.junit.Assert.assertNotNull;
 
 public class BackwardPropagate {
     public DirectedPseudograph<EntityNode, EventEdge> graph;

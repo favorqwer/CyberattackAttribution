@@ -65,7 +65,6 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
-
         <dependency>
             <groupId>org.graalvm.js</groupId>
             <artifactId>js</artifactId>
@@ -122,23 +121,21 @@
             <artifactId>commons-math3</artifactId>
             <version>3.6.1</version>
         </dependency>
-
         <dependency>
             <groupId>org.jgrapht</groupId>
             <artifactId>jgrapht-core</artifactId>
-            <version>1.1.0</version>
+            <version>1.5.2</version>
         </dependency>
-
         <dependency>
             <groupId>org.jgrapht</groupId>
             <artifactId>jgrapht-ext</artifactId>
-            <version>1.1.0</version>
+            <version>1.5.2</version>
         </dependency>
 
         <dependency>
             <groupId>org.jgrapht</groupId>
             <artifactId>jgrapht-io</artifactId>
-            <version>1.1.0</version>
+            <version>1.5.2</version>
         </dependency>
 
         <dependency>
