@@ -49,9 +49,10 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
 
     private Map<Fingerprint,SystemCall> answering;
 
-    private Map<String,Map<String, String>> incompleteEvents; //key is timestamp:event:cwd
+    private Map<EventKey, LogEntry> incompleteEvents; //key is timestamp:event:cwd
     private Map<String,PtoPEvent> backFlow; //key is pid+process
     private Map<String,PtoPEvent> forwardFlow; //key is pid+process
+    private final ParserStats parserStats = new ParserStats();
     private long unseenStartEventCount = 0;
     private static final Pattern pParent = Pattern.compile("ptid=(?<parentPID>\\d+)\\((?<parent>.+?)\\)");
 
@@ -263,24 +264,31 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
     public void getEntities() throws IOException{
         System.out.println("Parsing...");
         long start = System.currentTimeMillis();
-        //dependencyGraph = new DirectedPseudograph<pagerank.EntityNode, pagerank.EventEdge>(pagerank.EventEdge.class);
-        BufferedReader logReader = new BufferedReader(new FileReader(log),1048576);
-        String currentLine;
-        while((currentLine = logReader.readLine())!=null){
-            // 解析日志行
-            //todo修改调用的utils函数
-            Map matcher = Utils.parseEntryWithoutIDNew(currentLine);
-            if(!matcher.isEmpty()){
-                if(matcher.get("direction").equals(">")){
-                    // 开始事件，存入未完成事件映射
-                    incompleteEvents.put(matcher.get("timestamp")+":"+matcher.get("event")+":"+matcher.get("cwd"),matcher);
+        try (BufferedReader logReader = new BufferedReader(new FileReader(log),1048576)) {
+            String currentLine;
+            while((currentLine = logReader.readLine())!=null){
+                parserStats.totalLines++;
+
+                long parseStart = System.nanoTime();
+                LogEntry entry = parseLogEntryLine(currentLine);
+                parserStats.parseLineNs += System.nanoTime() - parseStart;
+
+                if(entry == null){
+                    parserStats.invalidLines++;
+                    continue;
+                }
+
+                if(entry.isStartEvent()){
+                    long matchStart = System.nanoTime();
+                    incompleteEvents.put(entry.toEventKey(), entry);
+                    parserStats.incompleteMatchNs += System.nanoTime() - matchStart;
+                    parserStats.startEvents++;
                 }else{
+                    parserStats.endEvents++;
                     try{
-                        // 结束事件，处理完整事件
-                        processEvent(matcher);
+                        processEvent(entry);
                     }catch (Exception e){
-//                        e.printStackTrace();
-//                        System.out.println(e.getMessage());
+                        parserStats.failedEndEvents++;
                     }
                 }
             }
@@ -289,29 +297,32 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         if (unseenStartEventCount > 0) {
             System.out.println("Event enter point not seen count: " + unseenStartEventCount);
         }
+        parserStats.print();
         System.out.println("Parsing(in parser) time Cost:"+(end-start)/1000.0);
     }
 
     @Override
     public void afterBuilding() {}
 
-    private void processEvent(Map<String, String> end) throws UnknownEventException {
-        String startTimestamp = subtractLatencyNs(end.get("timestamp"), end.get("latency"));
-        String key = buildEventKey(startTimestamp, end.get("event"), end.get("cwd"));
-        Map start;
-        if (!incompleteEvents.containsKey(key)){
-            String dummyEntry = String.format("%s %s %s %s (%s) %s %s cwd=%s !dummy!  latency=%s",
-                    "0",startTimestamp,end.get("cpu"),
-                    end.get("process"),end.get("pid"),">",end.get("event"),
-                    end.get("cwd"),end.get("latency"));
-            //todo 修改调用的utils函数
-            start = Utils.parseEntryWithoutIDNew(dummyEntry);
-        }else{
-            start = incompleteEvents.remove(key);
+    private void processEvent(LogEntry end) throws UnknownEventException {
+        long matchStart = System.nanoTime();
+        String startTimestamp = subtractLatencyNs(end.timestamp, end.latency);
+        EventKey key = new EventKey(startTimestamp, end.event, end.cwd);
+        LogEntry start = incompleteEvents.remove(key);
+        boolean useDummyStart = (start == null);
+        if (useDummyStart) {
+            start = createDummyStartEntry(end, startTimestamp);
         }
+        parserStats.incompleteMatchNs += System.nanoTime() - matchStart;
 
+        long extractStart = System.nanoTime();
         Entity[] startEntites = extractEntities(start);
         Entity[] endEntities = extractEntities(end);
+        parserStats.extractEntityNs += System.nanoTime() - extractStart;
+
+        long dispatchStart = System.nanoTime();
+        Map<String, String> startMap = start.toMap();
+        Map<String, String> endMap = end.toMap();
 
         // Fingerprint = (系统调用名, 进入时的实体类型, 返回时的实体类型),它的作用是唯一标识一种事件语义。
         //例如：
@@ -319,15 +330,17 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         //read()：("read", Process, FileEntity)
         //accept()：("accept", null, NetworkEntity)
         //execve()：("execve", FileEntity, null)
-        Fingerprint f = Fingerprint.toFingerPrint(start, end, startEntites, endEntities);
+        Fingerprint f = Fingerprint.toFingerPrint(startMap, endMap, startEntites, endEntities);
         // answering 是一个全局 Map，键是指纹（Fingerprint），值是该指纹对应的处理逻辑（SystemCall）
         SystemCall systemCall = answering.getOrDefault(f, null);
         if (systemCall == null) {
-            throw new UnknownEventException("Unknown event: "+start.get("event"));
+            throw new UnknownEventException("Unknown event: "+startMap.get("event"));
         }else{
-            systemCall.react(start, end, startEntites, endEntities);
+            systemCall.react(startMap, endMap, startEntites, endEntities);
         }
-        if(start.get("args").equals("!dummy!")) {
+        parserStats.dispatchNs += System.nanoTime() - dispatchStart;
+
+        if(useDummyStart) {
             unseenStartEventCount++;
         }
     }
@@ -445,15 +458,15 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
     }
 
     //todo: support IPv6
-    private Entity[] extractEntities(Map<String, String> m){
+    private Entity[] extractEntities(LogEntry m){
         Entity[] res = new Entity[2];
 
         // ==================== 第一部分：提取进程实体（永远有）================
         long id = 0L;
-        String pid = m.get("pid");
-        String process = m.get("process");
+        String pid = m.pid;
+        String process = m.process;
         String processKey = pid+process;
-        String[] timestamp = splitTimestamp(m.get("timestamp"));
+        String[] timestamp = splitTimestamp(m.timestamp);
         res[0] = processes.computeIfAbsent(processKey, key -> new Process(repu, id, hops, pid,
                 null, null, null, timestamp[0], timestamp[1], process, UID++));
         // 至此，res[0] 一定是 Process 对象，且全局唯一（同一个 pid+name 的进程只会创建一个节点）
@@ -461,7 +474,7 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
 
 
         // ==================== 第二部分：从 args 中提取文件或网络实体 ================
-        String args = m.get("args");
+        String args = m.args;
         Map<String, String> file_socket = Utils.extractFileandSocket(args);
         String process_file = Utils.extractProcessFile(args);
 
@@ -521,14 +534,69 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         return timestamp + ":" + event + ":" + cwd;
     }
 
-    private int compareTimestamp(String left, String right) {
-        return Long.compare(toEpochNano(left), toEpochNano(right));
+    private LogEntry parseLogEntryLine(String line) {
+        String[] fields = splitFirstNine(line);
+        if (fields == null) {
+            return null;
+        }
+        return new LogEntry(
+                line,
+                fields[0],
+                fields[1],
+                fields[2],
+                fields[3],
+                fields[4],
+                fields[5],
+                fields[6],
+                fields[7],
+                fields[8],
+                false
+        );
+    }
+
+    private LogEntry createDummyStartEntry(LogEntry end, String startTimestamp) {
+        return new LogEntry(
+                end.raw,
+                startTimestamp,
+                end.cpu,
+                end.process,
+                end.pid,
+                ">",
+                end.event,
+                end.cwd,
+                end.latency,
+                "!dummy!",
+                true
+        );
     }
 
     private String subtractLatencyNs(String timestamp, String latencyNs) {
         long endNs = toEpochNano(timestamp);
         long latency = Long.parseLong(latencyNs);
         return fromEpochNano(endNs - latency);
+    }
+
+    private String[] splitFirstNine(String entry) {
+        String[] result = new String[9];
+        int from = 0;
+        for (int i = 0; i < 8; i++) {
+            int delimiterIndex = entry.indexOf(";;", from);
+            if (delimiterIndex < 0) {
+                return null;
+            }
+            result[i] = entry.substring(from, delimiterIndex);
+            from = delimiterIndex + 2;
+        }
+        int argsEnd = entry.indexOf(";;", from);
+        if (argsEnd < 0) {
+            argsEnd = entry.length();
+        }
+        result[8] = entry.substring(from, argsEnd);
+        return result;
+    }
+
+    private int compareTimestamp(String left, String right) {
+        return Long.compare(toEpochNano(left), toEpochNano(right));
     }
 
     private long toEpochNano(String timestamp) {
@@ -582,5 +650,121 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
             100_000_000L,
             1_000_000_000L
     };
+
+    private static final class EventKey {
+        private final String timestamp;
+        private final String event;
+        private final String cwd;
+
+        private EventKey(String timestamp, String event, String cwd) {
+            this.timestamp = timestamp;
+            this.event = event;
+            this.cwd = cwd;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof EventKey)) {
+                return false;
+            }
+            EventKey other = (EventKey) obj;
+            return Objects.equals(timestamp, other.timestamp)
+                    && Objects.equals(event, other.event)
+                    && Objects.equals(cwd, other.cwd);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(timestamp, event, cwd);
+        }
+    }
+
+    private static final class LogEntry {
+        private final String raw;
+        private final String timestamp;
+        private final String cpu;
+        private final String process;
+        private final String pid;
+        private final String direction;
+        private final String event;
+        private final String cwd;
+        private final String latency;
+        private final String args;
+        private final boolean dummyStart;
+        private Map<String, String> cacheMap;
+
+        private LogEntry(String raw, String timestamp, String cpu, String process, String pid,
+                         String direction, String event, String cwd, String latency, String args,
+                         boolean dummyStart) {
+            this.raw = raw;
+            this.timestamp = timestamp;
+            this.cpu = cpu;
+            this.process = process;
+            this.pid = pid;
+            this.direction = direction;
+            this.event = event;
+            this.cwd = cwd;
+            this.latency = latency;
+            this.args = args;
+            this.dummyStart = dummyStart;
+        }
+
+        private boolean isStartEvent() {
+            return ">".equals(direction);
+        }
+
+        private EventKey toEventKey() {
+            return new EventKey(timestamp, event, cwd);
+        }
+
+        private Map<String, String> toMap() {
+            if (cacheMap == null) {
+                cacheMap = new HashMap<>(10);
+                cacheMap.put("raw", raw);
+                cacheMap.put("timestamp", timestamp);
+                cacheMap.put("cpu", cpu);
+                cacheMap.put("process", process);
+                cacheMap.put("pid", pid);
+                cacheMap.put("direction", direction);
+                cacheMap.put("event", event);
+                cacheMap.put("cwd", cwd);
+                cacheMap.put("latency", latency);
+                cacheMap.put("args", args);
+            }
+            return cacheMap;
+        }
+    }
+
+    private static final class ParserStats {
+        private long totalLines;
+        private long invalidLines;
+        private long startEvents;
+        private long endEvents;
+        private long failedEndEvents;
+        private long parseLineNs;
+        private long incompleteMatchNs;
+        private long extractEntityNs;
+        private long dispatchNs;
+
+        private void print() {
+            double toMs = 1_000_000.0;
+            System.out.println(
+                    "Parser stats | lines=" + totalLines
+                            + ", invalid=" + invalidLines
+                            + ", start=" + startEvents
+                            + ", end=" + endEvents
+                            + ", failedEnd=" + failedEndEvents
+            );
+            System.out.println(
+                    "Parser stage(ms) | parseLine=" + String.format("%.3f", parseLineNs / toMs)
+                            + ", match=" + String.format("%.3f", incompleteMatchNs / toMs)
+                            + ", extractEntity=" + String.format("%.3f", extractEntityNs / toMs)
+                            + ", dispatch=" + String.format("%.3f", dispatchNs / toMs)
+            );
+        }
+    }
 
 }
