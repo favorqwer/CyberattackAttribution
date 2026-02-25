@@ -9,23 +9,42 @@ import java.util.Map;
 
 public class Utils {
 
+    private static final String DELIMITER = ";;";
+    private static final int DELIMITER_LENGTH = 2;
+
     public static Map<String, String> parseEntryWithoutIDNew(String entry) {
-        Map<String, String> res = new HashMap<>();
+        Map<String, String> res = new HashMap<>(10);
         res.put("raw", entry);
-        String[] fields = entry.split(";;", -1);
-        if (fields.length < 9) {
+
+        int from = 0;
+        String[] firstEight = new String[8];
+        for (int i = 0; i < 8; i++) {
+            int delimiterIndex = entry.indexOf(DELIMITER, from);
+            if (delimiterIndex < 0) {
+                return res;
+            }
+            firstEight[i] = entry.substring(from, delimiterIndex);
+            from = delimiterIndex + DELIMITER_LENGTH;
+        }
+
+        int argsEnd = entry.indexOf(DELIMITER, from);
+        if (argsEnd < 0) {
+            argsEnd = entry.length();
+        }
+
+        if (firstEight[7] == null) {
             return res;
         }
 
-        res.put("timestamp", fields[0]);
-        res.put("cpu", fields[1]);
-        res.put("process", fields[2]);
-        res.put("pid", fields[3]);
-        res.put("direction", fields[4]);
-        res.put("event", fields[5]);
-        res.put("cwd", fields[6]);
-        res.put("latency", fields[7]);
-        res.put("args", fields[8]);
+        res.put("timestamp", firstEight[0]);
+        res.put("cpu", firstEight[1]);
+        res.put("process", firstEight[2]);
+        res.put("pid", firstEight[3]);
+        res.put("direction", firstEight[4]);
+        res.put("event", firstEight[5]);
+        res.put("cwd", firstEight[6]);
+        res.put("latency", firstEight[7]);
+        res.put("args", entry.substring(from, argsEnd));
 
         return res;
     }
@@ -107,12 +126,22 @@ public class Utils {
     }
 
     static long extractSize(String s) {
-        if (s.contains("res=")) {
-            String size = s.substring(s.indexOf("res=") + 4).split(" ")[0];
-            if (!size.startsWith("-"))
-                return Long.parseLong(size);
+        int marker = s.indexOf("res=");
+        if (marker < 0) {
+            return -1L;
         }
-        return -1L;
+        int start = marker + 4;
+        if (start >= s.length() || s.charAt(start) == '-') {
+            return -1L;
+        }
+        int end = start;
+        while (end < s.length() && Character.isDigit(s.charAt(end))) {
+            end++;
+        }
+        if (end == start) {
+            return -1L;
+        }
+        return Long.parseLong(s.substring(start, end));
     }
 
     static Map<String, String> extractFileandSocket(String s) {
@@ -125,8 +154,13 @@ public class Utils {
 
         Map<String, String> res = new HashMap<>();
 
-        if (s.contains("fd=")) {
-            String fd = s.substring(s.indexOf("fd=")).split(" ")[0];
+        int fdIndex = s.indexOf("fd=");
+        if (fdIndex >= 0) {
+            int fdEnd = s.indexOf(' ', fdIndex);
+            if (fdEnd < 0) {
+                fdEnd = s.length();
+            }
+            String fd = s.substring(fdIndex, fdEnd);
             int index = 0;
             while (index < fd.length()) {
                 if (fd.charAt(index) == '>') {
@@ -183,8 +217,14 @@ public class Utils {
 
     static String extractProcessFile(String s) {
         String path = null;
-        if (s.contains("filename=")) {
-            path = s.substring(s.indexOf("filename=") + 9).split(" ")[0];
+        int filenameIndex = s.indexOf("filename=");
+        if (filenameIndex >= 0) {
+            int start = filenameIndex + 9;
+            int end = s.indexOf(' ', start);
+            if (end < 0) {
+                end = s.length();
+            }
+            path = s.substring(start, end);
             if (path.contains("("))
                 path = path.substring(path.indexOf("(") + 1, path.length() - 1);
         }
@@ -193,16 +233,24 @@ public class Utils {
 
     private static String[] getIPandPorts(String str) {
         String[] res = new String[4];
-        String[] srcAndDest = str.split("->");
-        if (srcAndDest.length < 2) {
+        int arrow = str.indexOf("->");
+        if (arrow < 0) {
             throw new ArrayIndexOutOfBoundsException("Can't parse socket!");
         }
-        String[] src = srcAndDest[0].split(":");
-        String[] dest = srcAndDest[1].split(":");
-        res[0] = src[0];
-        res[1] = src[1];
-        res[2] = dest[0];
-        res[3] = dest[1];
+
+        String src = str.substring(0, arrow);
+        String dest = str.substring(arrow + 2);
+
+        int srcColon = src.lastIndexOf(':');
+        int destColon = dest.lastIndexOf(':');
+        if (srcColon < 0 || destColon < 0) {
+            throw new ArrayIndexOutOfBoundsException("Can't parse socket!");
+        }
+
+        res[0] = src.substring(0, srcColon);
+        res[1] = src.substring(srcColon + 1);
+        res[2] = dest.substring(0, destColon);
+        res[3] = dest.substring(destColon + 1);
         if (res[3].equals("domamin")) {
             res[3] = "53";
         }
@@ -210,7 +258,10 @@ public class Utils {
     }
 
     private static String[] getIPs(String str) {
-        String[] res = str.split("->");
-        return res;
+        int arrow = str.indexOf("->");
+        if (arrow < 0) {
+            return new String[]{str, ""};
+        }
+        return new String[]{str.substring(0, arrow), str.substring(arrow + 2)};
     }
 }

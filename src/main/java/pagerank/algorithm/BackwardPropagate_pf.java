@@ -290,16 +290,13 @@ public class BackwardPropagate_pf {
         // initializeWeights();
 
         // Compute individual weights
-        Set<EventEdge> inEdges;
-        for (EntityNode n : vertexSet) {
-            inEdges = graph.incomingEdgesOf(n);
-            for (EventEdge inEdge : inEdges) {
-                timeWeights.put(inEdge.id, getTimeWeight(inEdge));
-                amountWeights.put(inEdge.id, getAmountWeight(inEdge));
-                structureWeights.put(inEdge.id, getStructureWeight(inEdge));
+        Set<EventEdge> allGraphEdges = graph.edgeSet();
+        for (EventEdge edge : allGraphEdges) {
+            timeWeights.put(edge.id, getTimeWeight(edge));
+            amountWeights.put(edge.id, getAmountWeight(edge));
+            structureWeights.put(edge.id, getStructureWeight(edge));
 
-                // printEdgeWeights(inEdge);
-            }
+            // printEdgeWeights(edge);
         }
 
         // Pre-process individual weights
@@ -307,33 +304,17 @@ public class BackwardPropagate_pf {
         preprocessWeights(amountWeights, normalizeByOutEdges);
         preprocessWeights(structureWeights, normalizeByOutEdges);
 
-        // Additional pre-processing for structureWeights for seeds
-        for (EntityNode n : vertexSet) {
-            inEdges = graph.incomingEdgesOf(n);
-            for (EventEdge inEdge : inEdges) {
-                if (seedSources.contains(inEdge.getSink().getSignature())) {
-                    // Sink is seed
-                    // System.out.println();
-                    // System.out.println("Edges from seed sources: " + "EventEdge " +
-                    // inEdge.getID() + " (" + inEdge.getSource().getID() + " " +
-                    // inEdge.getSource().getSignature() + " ->" + inEdge.getEvent() + " " +
-                    // inEdge.getSink().getID() + " " + inEdge.getSink().getSignature() + ")");
-                    // System.out.println("Normalized structureWeight before hard set: " +
-                    // structureWeights.get(inEdge.id));
-                    structureWeights.put(inEdge.id, 1.0);
-                    // System.out.println("Normalized structureWeight after hard set: " +
-                    // structureWeights.get(inEdge.id));
-                }
+        // Additional pre-processing for structureWeights for seeds + store standardized weights
+        for (EventEdge edge : allGraphEdges) {
+            double structureWeightValue = structureWeights.get(edge.id);
+            if (seedSources.contains(edge.getSink().getSignature())) {
+                structureWeightValue = 1.0;
+                structureWeights.put(edge.id, structureWeightValue);
             }
-        }
-        // Store standardized weights for all edges
-        for (EntityNode n : vertexSet) {
-            inEdges = graph.incomingEdgesOf(n);
-            for (EventEdge inEdge : inEdges) {
-                inEdge.timeWeight = timeWeights.get(inEdge.id);
-                inEdge.amountWeight = amountWeights.get(inEdge.id);
-                inEdge.structureWeight = structureWeights.get(inEdge.id);
-            }
+
+            edge.timeWeight = timeWeights.get(edge.id);
+            edge.amountWeight = amountWeights.get(edge.id);
+            edge.structureWeight = structureWeightValue;
         }
 
         // Compute aggregated weight for all edges
@@ -377,17 +358,13 @@ public class BackwardPropagate_pf {
             }
         }
 
-        List<Double> weightList = new LinkedList<>();
-        for (EventEdge edge : allEdges) {
-            weightList.add(edge.weight);
-        }
         try {
             File file = new File(resDir + "/" + "clusterall_weights.json");
             FileWriter fileWriter = new FileWriter(file);
             PrintWriter printWriter = new PrintWriter(fileWriter);
             JSONArray jsonArray = new JSONArray();
-            for (Double d : weightList) {
-                jsonArray.add(d);
+            for (EventEdge edge : allEdges) {
+                jsonArray.add(edge.weight);
             }
             printWriter.write(jsonArray.toJSONString());
             printWriter.close();
@@ -727,6 +704,7 @@ public class BackwardPropagate_pf {
         for (int i = 0; i < allEdges.size(); i++) { // initialize to the same size
             finalWeights.add(0.0);
         }
+        Map<Long, Integer> edgeIndexMap = buildEdgeIndexMap(allEdges);
 
         // For each node
         Set<EntityNode> vertexSet = graph.vertexSet();
@@ -737,7 +715,10 @@ public class BackwardPropagate_pf {
             } else if (outEdges.size() == 1) { // Outlier edge (no incoming edges)
                 // Directly set the final weights to 0
                 System.out.println("Only 1 outgoing edge (outlier edge)");
-                finalWeights.set(allEdges.indexOf(outEdges.get(0)), 1.0);
+                Integer index = edgeIndexMap.get(outEdges.get(0).id);
+                if (index != null) {
+                    finalWeights.set(index, 1.0);
+                }
             } else { // Non-outlier edges
                      // Cluster inEdges
                 List<Cluster<EventEdgeWrapper>> clusterResults = clusterEdges(outEdges, "multiKmeansPlusPlus");
@@ -751,13 +732,19 @@ public class BackwardPropagate_pf {
                     double wTotal = 0.0;
                     if (amount < 1e-8) {
                         for (EventEdge outEdge : outEdges) {
-                            finalWeights.set(allEdges.indexOf(outEdge),
-                                    0.5 * outEdge.timeWeight + 0.5 * outEdge.structureWeight);
+                            Integer index = edgeIndexMap.get(outEdge.id);
+                            if (index != null) {
+                                finalWeights.set(index,
+                                        0.5 * outEdge.timeWeight + 0.5 * outEdge.structureWeight);
+                            }
                         }
                     } else {
                         for (EventEdge outEdge : outEdges) {
-                            finalWeights.set(allEdges.indexOf(outEdge), (0.3333) * outEdge.timeWeight
-                                    + (0.3333) * outEdge.structureWeight + (0.3334) * outEdge.amountWeight);
+                            Integer index = edgeIndexMap.get(outEdge.id);
+                            if (index != null) {
+                                finalWeights.set(index, (0.3333) * outEdge.timeWeight
+                                        + (0.3333) * outEdge.structureWeight + (0.3334) * outEdge.amountWeight);
+                            }
                         }
                     }
                 } else {
@@ -784,8 +771,12 @@ public class BackwardPropagate_pf {
                     }
 
                     // Set to finalWeights
-                    for (EventEdge edge : outEdges) {
-                        finalWeights.set(allEdges.indexOf(edge), weightsForOutEdges.get(outEdges.indexOf(edge)));
+                    for (int i = 0; i < outEdges.size(); i++) {
+                        EventEdge edge = outEdges.get(i);
+                        Integer index = edgeIndexMap.get(edge.id);
+                        if (index != null) {
+                            finalWeights.set(index, weightsForOutEdges.get(i));
+                        }
                     }
                 }
             }
@@ -807,6 +798,7 @@ public class BackwardPropagate_pf {
         for (int i = 0; i < allEdges.size(); i++) { // initialize to the same size
             finalWeights.add(0.0);
         }
+        Map<Long, Integer> edgeIndexMap = buildEdgeIndexMap(allEdges);
 
         // For each node
         Set<EntityNode> vertexSet = graph.vertexSet();
@@ -817,21 +809,33 @@ public class BackwardPropagate_pf {
             } else if (inEdges.size() == 1) { // Outlier edge (no incoming edges)
                 // Directly set the final weights to 0
                 System.out.println("Only 1 incoming edge (outlier edge)");
-                finalWeights.set(allEdges.indexOf(inEdges.get(0)), 1.0);
+                Integer index = edgeIndexMap.get(inEdges.get(0).id);
+                if (index != null) {
+                    finalWeights.set(index, 1.0);
+                }
             } else { // Non-outlier edges
 
                 // Set to finalWeights based on weightType
                 if (weightType.equals("timeWeight")) {
                     for (EventEdge edge : inEdges) {
-                        finalWeights.set(allEdges.indexOf(edge), edge.timeWeight);
+                        Integer index = edgeIndexMap.get(edge.id);
+                        if (index != null) {
+                            finalWeights.set(index, edge.timeWeight);
+                        }
                     }
                 } else if (weightType.equals("amountWeight")) {
                     for (EventEdge edge : inEdges) {
-                        finalWeights.set(allEdges.indexOf(edge), edge.amountWeight);
+                        Integer index = edgeIndexMap.get(edge.id);
+                        if (index != null) {
+                            finalWeights.set(index, edge.amountWeight);
+                        }
                     }
                 } else if (weightType.equals("structureWeight")) {
                     for (EventEdge edge : inEdges) {
-                        finalWeights.set(allEdges.indexOf(edge), edge.structureWeight);
+                        Integer index = edgeIndexMap.get(edge.id);
+                        if (index != null) {
+                            finalWeights.set(index, edge.structureWeight);
+                        }
                     }
                 } else {
                     System.out.println("Unsupported weightType: " + weightType);
@@ -840,6 +844,14 @@ public class BackwardPropagate_pf {
         }
 
         return finalWeights;
+    }
+
+    private Map<Long, Integer> buildEdgeIndexMap(List<EventEdge> allEdges) {
+        Map<Long, Integer> edgeIndexMap = new HashMap<>(allEdges.size() * 2);
+        for (int i = 0; i < allEdges.size(); i++) {
+            edgeIndexMap.put(allEdges.get(i).id, i);
+        }
+        return edgeIndexMap;
     }
 
     private List<Cluster<EventEdgeWrapper>> clusterEdges(List<EventEdge> edges, String clusteringMethod) {

@@ -16,7 +16,6 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -53,6 +52,7 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
     private Map<String,Map<String, String>> incompleteEvents; //key is timestamp:event:cwd
     private Map<String,PtoPEvent> backFlow; //key is pid+process
     private Map<String,PtoPEvent> forwardFlow; //key is pid+process
+    private long unseenStartEventCount = 0;
     private static final Pattern pParent = Pattern.compile("ptid=(?<parentPID>\\d+)\\((?<parent>.+?)\\)");
 
     public SysdigOutputParserNoRegex(String pathToLog, String[] localIP) {
@@ -286,6 +286,9 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
             }
         }
         long end = System.currentTimeMillis();
+        if (unseenStartEventCount > 0) {
+            System.out.println("Event enter point not seen count: " + unseenStartEventCount);
+        }
         System.out.println("Parsing(in parser) time Cost:"+(end-start)/1000.0);
     }
 
@@ -293,10 +296,8 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
     public void afterBuilding() {}
 
     private void processEvent(Map<String, String> end) throws UnknownEventException {
-        String startTimestamp = new BigDecimal(end.get("timestamp"))
-                .subtract(new BigDecimal(end.get("latency")).scaleByPowerOfTen(-9))
-                .toString();
-        String key = startTimestamp+":"+end.get("event")+":"+end.get("cwd");
+        String startTimestamp = subtractLatencyNs(end.get("timestamp"), end.get("latency"));
+        String key = buildEventKey(startTimestamp, end.get("event"), end.get("cwd"));
         Map start;
         if (!incompleteEvents.containsKey(key)){
             String dummyEntry = String.format("%s %s %s %s (%s) %s %s cwd=%s !dummy!  latency=%s",
@@ -326,22 +327,23 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         }else{
             systemCall.react(start, end, startEntites, endEntities);
         }
-        if(start.get("args").equals("!dummy!"))
-            System.out.println("Event enter point not seen: "+end.get("raw"));
+        if(start.get("args").equals("!dummy!")) {
+            unseenStartEventCount++;
+        }
     }
 
     public void updateP2PLinks(Map<String, String> mStart, Map<String, String> mEnd, Entity[] entitiesStart, Entity[] entitiesEnd){
         String endTime = mEnd.get("timestamp");
         if(backFlow.containsKey(mEnd.get("pid")+mEnd.get("process"))){
             PtoPEvent bf = backFlow.get(mEnd.get("pid")+mEnd.get("process"));
-            if(new BigDecimal(bf.getEnd()).compareTo(new BigDecimal(endTime))<0){
+            if(compareTimestamp(bf.getEnd(), endTime)<0){
                 bf.setEndTime(endTime);
             }
 //            System.out.println(bf.getEnd());
         }
         if(forwardFlow.containsKey(mEnd.get("pid")+mEnd.get("process"))){
             PtoPEvent ff = forwardFlow.get(mEnd.get("pid")+mEnd.get("process"));
-            if(new BigDecimal(ff.getEnd()).compareTo(new BigDecimal(endTime))<0){
+            if(compareTimestamp(ff.getEnd(), endTime)<0){
                 ff.setEndTime(endTime);
             }
 //            System.out.println(ff.getEnd());
@@ -355,9 +357,9 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         String timestampStart = mStart.get("timestamp");
         String event = mStart.get("event");
         String cwd = mStart.get("cwd");
-        String key = timestampStart+":"+event+":"+cwd;
+        String key = buildEventKey(timestampStart, event, cwd);
 
-        String[] timestampsStart = timestampStart.split("\\.");
+        String[] timestampsStart = splitTimestamp(timestampStart);
 
         String timestampEnd = mEnd.get("timestamp");
 
@@ -379,9 +381,9 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         String timestampStart = mStart.get("timestamp");
         String event = mStart.get("event");
         String cwd = mStart.get("cwd");
-        String key = timestampStart+":"+event+":"+cwd;
+        String key = buildEventKey(timestampStart, event, cwd);
 
-        String[] timestampsStart = timestampStart.split("\\.");
+        String[] timestampsStart = splitTimestamp(timestampStart);
 
         String timestampEnd = mEnd.get("timestamp");
 
@@ -402,9 +404,9 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         String timestampStart = mStart.get("timestamp");
         String event = mStart.get("event");
         String cwd = mStart.get("cwd");
-        String key = timestampStart+":"+event+":"+cwd;
+        String key = buildEventKey(timestampStart, event, cwd);
 
-        String[] timestampsStart = timestampStart.split("\\.");
+        String[] timestampsStart = splitTimestamp(timestampStart);
 
         String timestampEnd = mEnd.get("timestamp");
 
@@ -427,8 +429,8 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         String timestampStart = mStart.get("timestamp");
         String event = mStart.get("event");
         String cwd = mStart.get("cwd");
-        String key = timestampStart+":"+event+":"+cwd;
-        String[] timestampsStart = timestampStart.split("\\.");
+        String key = buildEventKey(timestampStart, event, cwd);
+        String[] timestampsStart = splitTimestamp(timestampStart);
 
         String timestampEnd = mEnd.get("timestamp");
 
@@ -451,7 +453,7 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         String pid = m.get("pid");
         String process = m.get("process");
         String processKey = pid+process;
-        String[] timestamp = m.get("timestamp").split("\\.");
+        String[] timestamp = splitTimestamp(m.get("timestamp"));
         res[0] = processes.computeIfAbsent(processKey, key -> new Process(repu, id, hops, pid,
                 null, null, null, timestamp[0], timestamp[1], process, UID++));
         // 至此，res[0] 一定是 Process 对象，且全局唯一（同一个 pid+name 的进程只会创建一个节点）
@@ -514,5 +516,71 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
     public HashMap<String, FtoPEvent> getFpmap() {
         return this.fpEvent;
     }
+
+    private String buildEventKey(String timestamp, String event, String cwd) {
+        return timestamp + ":" + event + ":" + cwd;
+    }
+
+    private int compareTimestamp(String left, String right) {
+        return Long.compare(toEpochNano(left), toEpochNano(right));
+    }
+
+    private String subtractLatencyNs(String timestamp, String latencyNs) {
+        long endNs = toEpochNano(timestamp);
+        long latency = Long.parseLong(latencyNs);
+        return fromEpochNano(endNs - latency);
+    }
+
+    private long toEpochNano(String timestamp) {
+        int dot = timestamp.indexOf('.');
+        if (dot < 0) {
+            return Long.parseLong(timestamp) * 1_000_000_000L;
+        }
+
+        long second = Long.parseLong(timestamp.substring(0, dot));
+        String nanosPart = timestamp.substring(dot + 1);
+        long nanos;
+        if (nanosPart.length() >= 9) {
+            nanos = Long.parseLong(nanosPart.substring(0, 9));
+        } else {
+            nanos = Long.parseLong(nanosPart) * POW10[9 - nanosPart.length()];
+        }
+        return second * 1_000_000_000L + nanos;
+    }
+
+    private String fromEpochNano(long epochNano) {
+        long second = Math.floorDiv(epochNano, 1_000_000_000L);
+        long nanos = Math.floorMod(epochNano, 1_000_000_000L);
+        if (nanos == 0) {
+            return Long.toString(second);
+        }
+        String nanoText = String.format("%09d", nanos);
+        int end = nanoText.length();
+        while (end > 0 && nanoText.charAt(end - 1) == '0') {
+            end--;
+        }
+        return second + "." + nanoText.substring(0, end);
+    }
+
+    private String[] splitTimestamp(String timestamp) {
+        int dot = timestamp.indexOf('.');
+        if (dot < 0) {
+            return new String[]{timestamp, "0"};
+        }
+        return new String[]{timestamp.substring(0, dot), timestamp.substring(dot + 1)};
+    }
+
+    private static final long[] POW10 = new long[]{
+            1L,
+            10L,
+            100L,
+            1_000L,
+            10_000L,
+            100_000L,
+            1_000_000L,
+            10_000_000L,
+            100_000_000L,
+            1_000_000_000L
+    };
 
 }
