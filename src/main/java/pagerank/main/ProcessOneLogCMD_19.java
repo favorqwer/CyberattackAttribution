@@ -6,7 +6,6 @@ import pagerank.algorithm.BackwardPropagate_pf;
 import pagerank.algorithm.IterateGraph;
 import pagerank.algorithm.GetGraph;
 import pagerank.algorithm.CausalityPreserve;
-import pagerank.algorithm.NODOZE;
 import pagerank.algorithm.BackTrack;
 import pagerank.algorithm.LLMGraphFilter;
 
@@ -202,23 +201,6 @@ public class ProcessOneLogCMD_19 {
                     infer.calculateWeightsRandom();
                     break;
                 case "nodoze":
-
-                    // List<String> fileMalicious = new ArrayList<>();
-                    // fileMalicious.add(detection);
-                    // List<String> ipMalicious = new ArrayList<>();
-                    // NODOZE nodoze = new NODOZE(fileMalicious, ipMalicious, orignal, backtrack,
-                    // CPR.afterMerge,detection, importantEntries);
-                    // long nodozeStart = System.currentTimeMillis();
-                    // int nodozeRes = nodoze.filterExp();
-                    // long nodozeEnd = System.currentTimeMillis();
-                    // long nodozeTimeCost =nodozeEnd - nodozeStart;
-                    // File nodozeResFile = new File(resultDir+"/nodoze.txt");
-                    // FileWriter fileWriter = new FileWriter(nodozeResFile);
-                    // fileWriter.write("Nodoze Res:"+String.valueOf(nodozeRes)+"\n");
-                    // fileWriter.write("Nodoze time: "+String.valueOf(nodozeTimeCost));
-                    // System.out.println("Size of Nodoze Res: "+ String.valueOf(nodozeRes));
-                    // System.out.println("Time of Nodoze: " + String.valueOf(nodozeTimeCost));
-                    // fileWriter.close();
                     return;
                 case "read_only":
                     Map<String, Integer> res = infer.graphSizeWithoutReadonly();
@@ -424,23 +406,7 @@ public class ProcessOneLogCMD_19 {
                 case "nonmlrandom":// 随机权重（用于基线对比）
                     infer.calculateWeightsRandom();
                     break;
-                case "nodoze":// 运行 NODOZE 算法（另一个论文的方法），直接返回
-                    List<String> fileMalicious = new ArrayList<>();
-                    fileMalicious.add(detection);
-                    List<String> ipMalicious = new ArrayList<>();
-                    NODOZE nodoze = new NODOZE(fileMalicious, ipMalicious, orignal, backTrack.afterBackTrack,
-                            CPR.afterMerge, detection, importantEntries);
-                    long nodozeStart = System.currentTimeMillis();
-                    int nodozeRes = nodoze.filterExp();
-                    long nodozeEnd = System.currentTimeMillis();
-                    long nodozeTimeCost = nodozeEnd - nodozeStart;
-                    File nodozeResFile = new File(resultDir + "/nodoze.txt");
-                    FileWriter fileWriter = new FileWriter(nodozeResFile);
-                    fileWriter.write("Nodoze Res:" + String.valueOf(nodozeRes) + "\n");
-                    fileWriter.write("Nodoze time: " + String.valueOf(nodozeTimeCost));
-                    System.out.println("Size of Nodoze Res: " + String.valueOf(nodozeRes));
-                    System.out.println("Time of Nodoze: " + String.valueOf(nodozeTimeCost));
-                    fileWriter.close();
+                case "nodoze":// 已移除 NODOZE 算法实现，保持兼容行为：直接返回
                     return;
                 case "read_only":// 只统计只读节点数量，输出文件后返回
                     Map<String, Integer> res = infer.graphSizeWithoutReadonly();
