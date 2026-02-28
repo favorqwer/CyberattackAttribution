@@ -2,6 +2,21 @@
 
 在运行之前，需要准备好日志文件及其相关的属性文件。日志文件应以 `.txt` 结尾，属性文件应与相关日志同名，并以 `.backward` 作为关键字。日志和属性文件必须存放在同一个文件夹中。LLM相关配置在llm.properties中。
 
+### llm.properties 配置说明
+
+`llm.properties` 用于控制是否启用 LLM 图过滤，以及配置 LLM 服务连接参数。
+
+```properties
+llm_enabled=true
+base_url=https://integrate.api.nvidia.com/v1
+api_key=your_api_key
+model=moonshotai/kimi-k2-instruct-0905
+```
+
+- `llm_enabled=true`：启用 LLM 过滤流程。
+- `llm_enabled=false`：跳过 LLM 过滤，直接返回原始溯源图。
+- 当启用 LLM 时，需要正确设置 `base_url`、`api_key`、`model`。
+
 ```text
 > cmd_inject.txt
 > cmd_inject.backward.property 

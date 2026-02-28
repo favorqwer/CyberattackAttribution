@@ -35,6 +35,7 @@ public class LLMGraphFilter {
     private String baseUrl;
     private String apiKey;
     private String modelName;
+    private boolean llmEnabled;
 
     public LLMGraphFilter() {
         loadConfig();
@@ -47,11 +48,13 @@ public class LLMGraphFilter {
         Properties prop = new Properties();
         try (FileInputStream fis = new FileInputStream("llm.properties")) {
             prop.load(fis);
+            this.llmEnabled = Boolean.parseBoolean(prop.getProperty("llm_enabled", "true").trim());
             this.baseUrl = prop.getProperty("base_url", "");
             this.apiKey = prop.getProperty("api_key", "");
             this.modelName = prop.getProperty("model", "");
         } catch (Exception e) {
             System.err.println("Warning: Could not load llm.properties. Using default values.");
+            this.llmEnabled = false;
             this.baseUrl = "";
             this.apiKey = "";
             this.modelName = "";
@@ -66,6 +69,11 @@ public class LLMGraphFilter {
             List<String> entryPoints,
             String poiEvent,
             String logFilePath) {
+
+        if (!this.llmEnabled) {
+            System.out.println("LLM filtering is disabled by configuration (llm_enabled=false). Returning original graph.");
+            return originalGraph;
+        }
 
         // 1. 安全检查
         if (this.baseUrl == null || this.baseUrl.trim().isEmpty() ||

@@ -11,6 +11,10 @@ public class EventEdgeProvider implements Function<EventEdge, String> {
 
     @Override
     public String apply(EventEdge eventEdge) {
-        return eventEdge.id + " " + eventEdge.weight; // no weights
+        String syscall = eventEdge.getEvent();
+        if (syscall == null || syscall.trim().isEmpty()) {
+            syscall = "unknown";
+        }
+        return syscall;
     }
 }
