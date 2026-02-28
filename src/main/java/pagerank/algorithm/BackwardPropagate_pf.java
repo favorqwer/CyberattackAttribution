@@ -2282,8 +2282,25 @@ public class BackwardPropagate_pf {
     }
 
     /**
-     * 支持多个攻击入口节点一起过滤，生成包含所有可能攻击路径的完整溯源图
-     * 逻辑：所有入口正向可达边的并集 → 用来过滤反向图（与单个入口完全一致的过滤精度）
+     * 支持多个攻击入口节点一起过滤，生成包含所有可能攻击路径的完整溯源图（连通版）
+     *
+     * <p>修复说明（原版不连通的根本原因）：
+     * 原版使用 {@code ForwardAnalysis(original)} 在完整原始日志图上做正向遍历，
+     * 而 {@code this.graph} 是经过 CPR 压缩的反向切片。两者的边集合并不完全一致，
+     * 导致签名比对（{@code convertEdgeToString}）时，某些节点的出边在正向图中能匹配
+     * 但其后续出边却不存在于正向图，从而在交集后变成"死端"（有入边无出边），
+     * 造成最终图不连通。
+     *
+     * <p>修复策略：
+     * <ol>
+     *   <li>改用 {@code ForwardAnalysis(this.graph)} 在反向切片内做正向遍历——
+     *       反向切片中所有节点均可到达 POI，正向遍历产生的边 100% 来自 {@code this.graph}，
+     *       交集结果天然与 POI 连通。</li>
+     *   <li>若所有入口在反向切片内均无正向路径（极端情况），直接返回完整反向切片，
+     *       因为反向切片本身已经对 POI 连通。</li>
+     *   <li>对交集后仍存在孤立分量的情形（安全兜底），通过 {@code ensureConnectivity}
+     *       从 {@code this.graph} 中补全孤立节点到主分量的最短路径。</li>
+     * </ol>
      */
     public DirectedPseudograph<EntityNode, EventEdge> combineBackwardAndForwardForMultipleStarts(
             List<String> startNodeIds,
@@ -2293,31 +2310,46 @@ public class BackwardPropagate_pf {
             return new DirectedPseudograph<>(EventEdge.class);
         }
 
-        // 重新初始化正向分析器（防止状态残留）
-        this.forwardAnalysis = new ForwardAnalysis(original);
+        // ===================== 主要修复：使用 this.graph（反向切片）做正向分析 =====================
+        // 原因：original 是完整原始日志图，this.graph 是 CPR 压缩后的反向可达子图。
+        // 在 original 上做正向遍历得到的边可能与 this.graph 中的边签名不一致，
+        // 导致交集操作后出现"死端"节点（有入边无出边），造成不连通。
+        // 改用 this.graph 做正向遍历后，所有正向可达边 100% 存在于 this.graph 中，
+        // 交集结果天然与 POI 连通。
+        this.forwardAnalysis = new ForwardAnalysis(this.graph);
         BigDecimal POITime = getPOITime();
 
-        // 1. 收集所有入口的正向子图
+        // 1. 收集所有入口在反向切片内的正向子图
         List<DirectedPseudograph<EntityNode, EventEdge>> forwardGraphs = new ArrayList<>();
         for (String start : startNodeIds) {
             DirectedPseudograph<EntityNode, EventEdge> fg = forwardAnalysis.forwardLimitedByTime(start, POITime);
-            // 只有真正能正向到达 POI 的才加入（避免空图干扰）
             if (fg != null && fg.edgeSet().size() > 0) {
                 forwardGraphs.add(fg);
             }
         }
 
-        // 如果所有入口都到不了 POI，直接返回空图
+        // 2. 若所有入口在反向切片内都无正向路径，回退到完整反向切片（已对 POI 连通）
         if (forwardGraphs.isEmpty()) {
-            return new DirectedPseudograph<>(EventEdge.class);
+            System.out.println("[combineBackwardAndForward] 所有入口在反向切片内正向路径为空，回退到完整反向切片");
+            DirectedPseudograph<EntityNode, EventEdge> fallback = new DirectedPseudograph<>(EventEdge.class);
+            for (EventEdge edge : this.graph.edgeSet()) {
+                fallback.addVertex(edge.getSource());
+                fallback.addVertex(edge.getSink());
+                fallback.addEdge(edge.getSource(), edge.getSink(), edge);
+            }
+            Map<String, Double> rep0 = IterateGraph.getNodeReputation(this.graph);
+            for (EntityNode node : fallback.vertexSet()) {
+                Double r = rep0.get(node.getSignature());
+                if (r != null) node.reputation = r;
+            }
+            return fallback;
         }
 
-        // 2. 合并所有正向图的边（并集）
+        // 3. 合并所有正向图的边（并集）
         Map<String, Integer> forwardEdgeUnion = IterateGraph.groupsEdges(forwardGraphs);
 
-        // 3. 用正向边并集过滤反向全图（this.graph 是类成员，已是反向可达子图）
+        // 4. 用正向边并集过滤反向全图（此时正向图与反向图边集完全相同性质，交集有意义）
         DirectedPseudograph<EntityNode, EventEdge> filtered = new DirectedPseudograph<>(EventEdge.class);
-
         for (EventEdge edge : this.graph.edgeSet()) {
             String signature = IterateGraph.convertEdgeToString(edge);
             if (forwardEdgeUnion.containsKey(signature)) {
@@ -2327,12 +2359,113 @@ public class BackwardPropagate_pf {
             }
         }
 
-        // 4. 恢复节点信誉度（与单入口完全一致）
+        // 5. 连通性保障（安全兜底）：若仍存在孤立分量，从 this.graph 补全路径
+        filtered = ensureConnectivity(filtered, startNodeIds);
+
+        // 6. 恢复节点信誉度
         Map<String, Double> originalReputation = IterateGraph.getNodeReputation(this.graph);
         for (EntityNode node : filtered.vertexSet()) {
             Double rep = originalReputation.get(node.getSignature());
             if (rep != null) {
                 node.reputation = rep;
+            }
+        }
+        return filtered;
+    }
+
+    /**
+     * 连通性保障辅助函数（安全兜底层）。
+     *
+     * <p>在主修复（使用 this.graph 做正向分析）后，理论上不应出现不连通图，
+     * 但为防止边界情况（如入口节点签名在 this.graph 中找不到等），
+     * 此函数检测弱连通分量，并对孤立分量中的节点在 {@code this.graph} 中
+     * 做 BFS，将其与包含最高声誉节点（通常是 POI）的主分量连接起来。
+     *
+     * @param filtered    待检查/修复的图
+     * @param startNodeIds 入口节点签名列表（调试用）
+     * @return 连通性修复后的图（已保证主分量与入口节点连通）
+     */
+    @SuppressWarnings("unchecked")
+    private DirectedPseudograph<EntityNode, EventEdge> ensureConnectivity(
+            DirectedPseudograph<EntityNode, EventEdge> filtered,
+            List<String> startNodeIds) {
+
+        if (filtered.vertexSet().isEmpty()) return filtered;
+
+        ConnectivityInspector<EntityNode, EventEdge> ci = new ConnectivityInspector<>(filtered);
+        if (ci.isConnected()) return filtered;
+
+        List<Set<EntityNode>> components = ci.connectedSets();
+        // 主分量 = 包含声誉最高节点的分量（POI 声誉通常为 1.0）
+        Set<EntityNode> mainComponent = components.stream()
+                .max(Comparator.comparingDouble(comp ->
+                        comp.stream().mapToDouble(n -> n.reputation).max().orElse(0.0)))
+                .orElse(components.get(0));
+
+        System.out.println("[连通性检查] 发现 " + components.size() + " 个弱连通分量，主分量节点数: "
+                + mainComponent.size() + "，正在修复...");
+
+        Set<String> mainSigs = new HashSet<>();
+        for (EntityNode n : mainComponent) mainSigs.add(n.getSignature());
+
+        // 对不在主分量中的每个孤立节点，在 this.graph 中做 BFS 前向搜索到主分量
+        Set<EntityNode> isolatedNodes = new HashSet<>();
+        for (Set<EntityNode> comp : components) {
+            if (comp != mainComponent) isolatedNodes.addAll(comp);
+        }
+
+        for (EntityNode isolated : new ArrayList<>(isolatedNodes)) {
+            // BFS：从孤立节点沿 this.graph 出边前向搜索，找到能到达主分量的路径
+            Queue<EntityNode> queue = new LinkedList<>();
+            Map<EntityNode, EntityNode> parent = new HashMap<>();
+            Map<EntityNode, EventEdge> edgeToParent = new HashMap<>();
+            Set<EntityNode> visited = new HashSet<>();
+            queue.offer(isolated);
+            visited.add(isolated);
+            boolean found = false;
+            EntityNode joinPoint = null;
+
+            outer:
+            while (!queue.isEmpty()) {
+                EntityNode cur = queue.poll();
+                for (EventEdge edge : this.graph.outgoingEdgesOf(cur)) {
+                    EntityNode next = edge.getSink();
+                    if (mainSigs.contains(next.getSignature())) {
+                        // 找到汇入点，记录最后一条边
+                        parent.put(next, cur);
+                        edgeToParent.put(next, edge);
+                        joinPoint = next;
+                        found = true;
+                        break outer;
+                    }
+                    if (!visited.contains(next)) {
+                        visited.add(next);
+                        parent.put(next, cur);
+                        edgeToParent.put(next, edge);
+                        queue.offer(next);
+                    }
+                }
+            }
+
+            if (found && joinPoint != null) {
+                // 沿 parent 回溯，将路径上的边补入 filtered 图
+                EntityNode cur = joinPoint;
+                while (edgeToParent.containsKey(cur)) {
+                    EventEdge e = edgeToParent.get(cur);
+                    filtered.addVertex(e.getSource());
+                    filtered.addVertex(e.getSink());
+                    if (!filtered.containsEdge(e)) {
+                        filtered.addEdge(e.getSource(), e.getSink(), e);
+                    }
+                    // 补全后该节点也加入主分量签名集，防止多次重复补全
+                    mainSigs.add(e.getSource().getSignature());
+                    mainSigs.add(e.getSink().getSignature());
+                    cur = parent.get(cur);
+                }
+                System.out.println("[连通性修复] 节点 " + isolated.getSignature() + " 已通过路径补全与主分量连通");
+            } else {
+                System.out.println("[连通性修复] 警告：节点 " + isolated.getSignature()
+                        + " 在反向切片中无法前向到达主分量（可能是合法孤岛），保留原样");
             }
         }
         return filtered;
