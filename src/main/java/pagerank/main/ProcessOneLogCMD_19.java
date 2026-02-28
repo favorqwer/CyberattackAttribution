@@ -69,9 +69,9 @@ public class ProcessOneLogCMD_19 {
      * @param logfile 日志文件路径
      * @param IP 本地IP地址数组
      * @param detection POI检测点（恶意事件）
-     * @param highRP 高可信实体数组
-     * @param midRP 中可信实体数组
-     * @param lowRP 低可信实体数组
+     * @param highRP 高可疑实体数组（已知恶意/可疑实体，如POI事件，reputation=1.0）
+     * @param midRP 背景噪音实体数组（系统库等，当前未启用特殊处理）
+     * @param lowRP 低可疑实体数组（已知良性/可信实体，reputation=0.0）
      * @param filename 日志文件名（不含路径）
      * @param detectionSize 检测到的数据量
      * @param seedSources 种子源集合
@@ -323,9 +323,9 @@ public class ProcessOneLogCMD_19 {
      * @param logfile 日志文件路径
      * @param IP 本地IP地址
      * @param detection POI检测点
-     * @param highRP 高可信实体
-     * @param midRP 中可信实体
-     * @param lowRP 低可信实体
+     * @param highRP 高可疑实体（已知恶意/可疑实体，如POI，reputation=1.0）
+     * @param midRP 背景噪音实体（系统库等）
+     * @param lowRP 低可疑实体（已知良性/可信实体，reputation=0.0）
      * @param filename 文件名
      * @param detectionSize 检测数据量
      * @param seedSources 种子源
@@ -469,9 +469,9 @@ public class ProcessOneLogCMD_19 {
             List<String> skipmode = new ArrayList<>();
             skipmode.add("fanout");
             if (!skipmode.contains(mode)) {
-                // 初始化已知高/低可信节点
-                // highRP：已知高可信进程/文件（如 system32 下的系统进程）
-                // lowRP：已知低可信（如临时目录下的可疑文件）
+                // 初始化已知高/低可疑节点的恶意度
+                // highRP：已知高可疑/恶意实体（如POI检测点），reputation初始化为1.0
+                // lowRP：已知良性/可信实体（如正常系统进程），reputation初始化为0.0
                 infer.initialReputation(highRP, lowRP);
                 start = System.currentTimeMillis();
                 infer.PageRankIterationBackward(highRP, midRP, lowRP, detection);

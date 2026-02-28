@@ -21,9 +21,9 @@ import java.util.*;
  * 配置文件格式示例（wget.backward文件）：
  * <pre>
  * POI=/tmp/malicious_file.txt          # 检测点（恶意文件/网络连接）
- * highRP=/bin/ls,192.168.1.1:80       # 高可信实体（正常进程/可信IP）
- * lowRP=192.168.1.100:44444           # 低可信实体（可疑IP/临时文件）
- * midRP=/lib64/libc.so.6              # 中可信实体（可选，扩展白名单）
+ * highRP=192.168.1.100:44444,/tmp/mal  # 高可疑实体（已知恶意/可疑，如POI、可疑IP/临时文件）
+ * lowRP=/bin/ls,192.168.1.1:80         # 低可疑实体（已知良性/可信，如正常进程/可信IP）
+ * midRP=/lib64/libc.so.6              # 背景噪音实体（系统库等，可选）
  * detectionSize=1024                  # 检测到的数据量
  * threshold=0                         # 阈值
  * trackOrigin=false                   # 是否追踪源头
@@ -33,9 +33,9 @@ import java.util.*;
  * 
  * 配置项说明：
  * - POI: Point of Interest，检测点/恶意事件，是溯源分析的起点
- * - highRP: 高可信实体列表，声誉分数初始化为1.0
- * - lowRP: 低可信实体列表，声誉分数初始化为0.0  
- * - midRP: 中可信实体列表，声誉分数初始化为0.5
+ * - highRP: 高可疑实体列表（已知恶意/可疑），恶意度分数初始化为1.0（POI自动加入）
+ * - lowRP: 低可疑实体列表（已知良性/可信），恶意度分数初始化为0.0
+ * - midRP: 背景噪音实体列表（系统库等），当前版本未启用特殊处理
  * - detectionSize: 检测到的数据量（字节），用于计算数据量权重
  * - threshold: 阈值参数
  * - trackOrigin: 是否追踪源头
@@ -53,11 +53,11 @@ public class Experiment {
     File log;
     // POI检测点（恶意事件）
     public String POI;
-    // 高可信实体数组
+    // 高可疑实体数组（已知恶意/可疑实体，reputation=1.0，POI自动加入）
     public String[] highRP;
-    // 低可信实体数组
+    // 低可疑实体数组（已知良性/可信实体，reputation=0.0）
     public String[] lowRP;
-    // 中可信实体数组
+    // 背景噪音实体数组（系统库等）
     public String[] midRP;
     // 阈值
     double threshold;
@@ -123,9 +123,9 @@ public class Experiment {
      * 
      * 从配置文件中读取并解析各个配置项：
      * - POI: 检测点
-     * - highRP: 高可信实体（逗号分隔）
-     * - lowRP: 低可信实体
-     * - midRP: 中可信实体（合并默认配置和自定义配置）
+     * - highRP: 高可疑实体（已知恶意/可疑，逗号分隔，POI自动加入）
+     * - lowRP: 低可疑实体（已知良性/可信）
+     * - midRP: 背景噪音实体（合并默认配置和自定义配置）
      * - threshold: 阈值
      * - trackOrigin: 是否追踪源头
      * - detectionSize: 检测数据量
@@ -139,7 +139,7 @@ public class Experiment {
     private void digestConfig(){
         POI = config.getProperty("POI");
 
-        // 解析 highRP，并自动将 POI 加入 highRP（确保 POI 节点的 RP 初始化为 1.0）
+        // 解析 highRP（高可疑实体），并自动将 POI 加入 highRP（确保 POI 节点的恶意度初始化为 1.0）
         String highRPString = config.getProperty("highRP","");
         String[] parsedHighRP = highRPString.split(",");
         Set<String> highRPSet = new LinkedHashSet<>(Arrays.asList(parsedHighRP));

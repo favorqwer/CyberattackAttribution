@@ -54,7 +54,7 @@
 - `nonmlrandom`: 随机权重(基线对比)
 
 #### Step 5: PageRank式传播 (BackwardPropagate_pf.java)
-- 初始化: 高可信实体(highRP)设为1.0，低可信实体(lowRP)设为0.0
+- 初始化: 高可疑/恶意实体(highRP)恶意度设为1.0，良性/可信实体(lowRP)恶意度设为0.0
 - 反向迭代传播恶意度分数
 - 使用阻尼因子(damping factor = 0.85)
 
@@ -136,9 +136,9 @@ Sysdig格式的系统审计日志，包含系统调用事件。
 配置项说明:
 ```properties
 POI = /tmp/malicious_file.txt          # 检测点(恶意文件/网络连接)
-highRP = 192.168.1.1:80->...,/bin/ls  # 高可信实体(系统进程/正常IP)
-lowRP = 192.168.1.100:44444->...       # 低可信实体(可疑IP/临时文件)
-midRP = /lib64/libc.so.6,...            # 中可信实体(可选，扩展白名单)
+highRP = 192.168.1.100:44444->...      # 高可疑实体(已知恶意/可疑，如POI、可疑IP/临时文件，reputation=1.0)
+lowRP = 192.168.1.1:80->...,/bin/ls    # 低可疑实体(已知良性/可信，如正常系统进程/可信IP，reputation=0.0)
+midRP = /lib64/libc.so.6,...            # 背景噪音实体(系统库等，可选)
 detectionSize = 1024                    # 检测到的数据量
 criticalEdge = edge1;edge2              # 关键边(用于评估)
 ```

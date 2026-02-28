@@ -36,7 +36,7 @@ import java.util.logging.Formatter;
  * 配置文件说明：
  * - 与日志同名的.property文件（如wget.txt对应的wget.backward文件）
  * - 以.backward结尾表示反向溯源分析
- * - 配置文件包含：POI（检测点）、highRP（高可信实体）、lowRP（低可信实体）等
+ * - 配置文件包含：POI（检测点）、highRP（高可疑/恶意实体）、lowRP（良性/可信实体）等
  */
 public class ExperimentRunnerCmd {
     // 权重计算模式：clusterall, nonml, clusterlocal, fanout等
@@ -253,9 +253,9 @@ public class ExperimentRunnerCmd {
                 // - e.log.getAbsolutePath(): 日志文件路径
                 // - MetaConfig.localIP: 本地IP地址列表
                 // - e.POI: Point of Interest，检测点/恶意事件
-                // - e.highRP: 高可信实体列表（如系统进程、正常IP）
-                // - e.midRP: 中可信实体列表
-                // - e.lowRP: 低可信实体列表（如可疑IP、临时文件）
+                // - e.highRP: 高可疑实体列表（已知恶意/可疑，如POI、可疑IP、临时文件，reputation=1.0）
+                // - e.midRP: 背景噪音实体列表（系统库等）
+                // - e.lowRP: 低可疑实体列表（已知良性/可信，如正常系统进程，reputation=0.0）
                 // - e.detectionSize: 检测到的数据量
                 // - e.getInitial(): 初始种子源
                 // - e.criticalEdges: 关键边（用于评估）
