@@ -18,6 +18,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -34,10 +35,18 @@ import static pagerank.main.ProcessOneLogCMD_19.DotToSvg;
  */
 public class LLMGraphFilter {
 
+    // ============ 预编译正则表达式常量（优化#14） ============
+    private static final Pattern EDGES_PATTERN = Pattern.compile("EDGES:\\s*\\[([^\\]]+)\\]", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ENTRY_NODES_PATTERN = Pattern.compile("ENTRY_NODES:\\s*\\[([^\\]]+)\\]", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ENTRY_NODES_REMOVE_PATTERN = Pattern.compile("(?i)ENTRY_NODES:\\s*\\[[^\\]]*\\]");
+    private static final Pattern BRACKET_CONTENT_PATTERN = Pattern.compile("\\[([a-zA-Z0-9_\\-\\s,\"']+)\\]");
+
     private String baseUrl;
     private String apiKey;
     private String modelName;
     private boolean llmEnabled;
+    private double temperature;
+    private int maxTokens;
 
     public LLMGraphFilter() {
         loadConfig();
@@ -54,12 +63,17 @@ public class LLMGraphFilter {
             this.baseUrl = prop.getProperty("base_url", "");
             this.apiKey = prop.getProperty("api_key", "");
             this.modelName = prop.getProperty("model", "");
+            // 优化#11：temperature 和 max_tokens 从配置文件读取
+            this.temperature = Double.parseDouble(prop.getProperty("temperature", "0.1").trim());
+            this.maxTokens = Integer.parseInt(prop.getProperty("max_tokens", "20480").trim());
         } catch (Exception e) {
             System.err.println("Warning: Could not load llm.properties. Using default values.");
             this.llmEnabled = false;
             this.baseUrl = "";
             this.apiKey = "";
             this.modelName = "";
+            this.temperature = 0.1;
+            this.maxTokens = 20480;
         }
     }
 
@@ -98,8 +112,11 @@ public class LLMGraphFilter {
             }
         }
 
+        // 优化#8：计算图统计摘要信息
+        String graphStatsSummary = buildGraphStatsSummary(originalGraph);
+
         // 4. 生成 Prompt
-        String prompt = buildPrompt(graphText, filteredEntryPoints, poiEvent);
+        String prompt = buildPrompt(graphText, filteredEntryPoints, poiEvent, graphStatsSummary);
 
         // 5. 联网调用 LLM
         String llmResponse = callLLMAPI(prompt);
@@ -116,31 +133,28 @@ public class LLMGraphFilter {
         Set<String> keptEdgeIds = extractEdgeIdsFromResponse(llmResponse);
         System.out.println("LLM selected " + keptEdgeIds.size() + " edges to keep.");
 
+        // 优化#13：校验 LLM 返回的 Edge ID 是否在原始图中实际存在
+        Set<String> validEdgeIds = new HashSet<>();
+        for (EventEdge edge : originalGraph.edgeSet()) {
+            validEdgeIds.add(String.valueOf(edge.getID()));
+        }
+        Set<String> invalidIds = new HashSet<>(keptEdgeIds);
+        invalidIds.removeAll(validEdgeIds);
+        if (!invalidIds.isEmpty()) {
+            System.err.println("Warning: LLM returned " + invalidIds.size() + " non-existent edge IDs (hallucinated): " + invalidIds);
+            keptEdgeIds.removeAll(invalidIds);
+            System.out.println("After validation, " + keptEdgeIds.size() + " valid edges remain.");
+        }
+
         Set<String> llmEntryNodes = extractEntryNodesFromResponse(llmResponse);
         System.out.println("LLM identified " + llmEntryNodes.size() + " entry nodes.");
 
         // 8. 重建图
         DirectedPseudograph<EntityNode, EventEdge> filteredGraph = buildFilteredGraph(originalGraph, keptEdgeIds);
-// ====================== 新增：生成 LLM 原始输出的中间 SVG ======================
-        try {
-            // 仿照你提供的代码命名风格，生成中间结果路径
-            // 将 .log 后缀替换为 _llm_raw 以示区分
-            String intermediatePath = logFilePath.replace(".log", "_llm_raw");
 
-            // 假设你的工程中有一个通用的 IterateGraph 类用于处理导出
-            // 注意：IterateGraph 内部应该已经封装了导出 .dot 的逻辑
-            IterateGraph intermediateOut = new IterateGraph(filteredGraph);
-            intermediateOut.exportGraph(intermediatePath);
+        // 优化#6：生成 LLM 原始输出的中间 SVG（抽取为独立方法）
+        exportIntermediateVisualization(filteredGraph, logFilePath);
 
-            // 调用你代码库中现有的 DotToSvg 静态方法
-            // 假设该方法定义在某个工具类中，如果是本类定义的请直接调用，如果在其他类请加类名如：YourUtils.DotToSvg
-            DotToSvg(intermediatePath + ".dot", intermediatePath + ".svg");
-
-            System.out.println("LLM raw output visualization saved: " + intermediatePath + ".svg");
-        } catch (Exception e) {
-            System.err.println("Failed to generate intermediate LLM SVG: " + e.getMessage());
-        }
-        // ===========================================================================
         // 9. 将 LLM 识别的入口节点加入过滤图（确保它们存在于图中）
         Set<EntityNode> llmEntryEntityNodes = new HashSet<>();
         for (EntityNode node : originalGraph.vertexSet()) {
@@ -171,21 +185,35 @@ public class LLMGraphFilter {
     }
 
     /**
-     * 写入 LLM 交互日志
+     * 写入 LLM 交互日志（优化#1：使用 try-with-resources 确保资源释放）
      */
     private void writeLLMLog(String logFilePath, String prompt, String response) {
-        try {
-            java.io.File logFile = new java.io.File(logFilePath);
-            java.io.FileWriter writer = new java.io.FileWriter(logFile);
+        java.io.File logFile = new java.io.File(logFilePath);
+        try (java.io.FileWriter writer = new java.io.FileWriter(logFile)) {
             writer.write("================ LLM PROMPT ================\n");
             writer.write(prompt);
             writer.write("\n\n================ LLM RESPONSE ================\n");
             writer.write(response != null ? response : "NULL (Request failed or returned empty)");
             writer.write("\n==============================================\n");
-            writer.close();
             System.out.println("LLM Interaction log saved to: " + logFilePath);
         } catch (Exception e) {
             System.err.println("Failed to write LLM log file: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 优化#6：生成 LLM 原始过滤结果的中间可视化 SVG，抽取为独立方法。
+     */
+    private void exportIntermediateVisualization(
+            DirectedPseudograph<EntityNode, EventEdge> filteredGraph, String logFilePath) {
+        try {
+            String intermediatePath = logFilePath.replace(".log", "_llm_raw");
+            IterateGraph intermediateOut = new IterateGraph(filteredGraph);
+            intermediateOut.exportGraph(intermediatePath);
+            DotToSvg(intermediatePath + ".dot", intermediatePath + ".svg");
+            System.out.println("LLM raw output visualization saved: " + intermediatePath + ".svg");
+        } catch (Exception e) {
+            System.err.println("Failed to generate intermediate LLM SVG: " + e.getMessage());
         }
     }
 
@@ -222,13 +250,50 @@ public class LLMGraphFilter {
     }
 
     /**
-     * 强调让 LLM 输出绝对属于攻击路径的边，以及它认为正确的入口节点。
+     * 优化#8：构建图统计摘要信息，包括节点总数、各类型节点数量、边总数、各事件类型边数量。
      */
-    private String buildPrompt(String graphText, List<String> entryPoints, String poiEvent) {
+    private String buildGraphStatsSummary(DirectedPseudograph<EntityNode, EventEdge> graph) {
+        int totalNodes = graph.vertexSet().size();
+        int totalEdges = graph.edgeSet().size();
+
+        Map<String, Integer> nodeTypeCounts = new HashMap<>();
+        for (EntityNode node : graph.vertexSet()) {
+            String type = node.getClass().getSimpleName();
+            nodeTypeCounts.merge(type, 1, Integer::sum);
+        }
+
+        Map<String, Integer> edgeTypeCounts = new HashMap<>();
+        for (EventEdge edge : graph.edgeSet()) {
+            String eventType = edge.getEvent() != null ? edge.getEvent() : edge.getType();
+            edgeTypeCounts.merge(eventType, 1, Integer::sum);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Graph Statistics: ").append(totalNodes).append(" nodes (");
+        List<String> nodeStats = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : nodeTypeCounts.entrySet()) {
+            nodeStats.add(entry.getValue() + " " + entry.getKey());
+        }
+        sb.append(String.join(", ", nodeStats)).append("), ");
+        sb.append(totalEdges).append(" edges (");
+        List<String> edgeStats = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : edgeTypeCounts.entrySet()) {
+            edgeStats.add(entry.getValue() + " " + entry.getKey());
+        }
+        sb.append(String.join(", ", edgeStats)).append(").");
+        return sb.toString();
+    }
+
+    /**
+     * 强调让 LLM 输出绝对属于攻击路径的边，以及它认为正确的入口节点。
+     * 优化#8：在 Prompt 中加入图的统计摘要信息，帮助 LLM 更好地理解图的全局结构。
+     */
+    private String buildPrompt(String graphText, List<String> entryPoints, String poiEvent, String graphStatsSummary) {
         return "You are a cybersecurity expert analyzing a provenance graph to track an attack. " +
                 "The graph is provided in a structured JSON format describing system entities (nodes) and events (edges).\n\n" +
-                "The known attack target (POI) is:\n" + poiEvent + "\n\n" +
+                "The known attack target is:\n" + poiEvent + "\n\n" +
                 "Possible attack entry points:\n" + String.join(", ", entryPoints) + "\n\n" +
+                graphStatsSummary + "\n\n" +
                 "Graph Data (JSON):\n" + graphText + "\n\n" +
                 "Your Task:\n" +
                 "1. Analyze the causal relationships carefully.\n" +
@@ -236,7 +301,7 @@ public class LLMGraphFilter {
                 "3. From the possible attack entry points listed above, identify which ones you believe are the TRUE attack entry points " +
                 "(i.e., the actual origin of the attack). You may select one or more.\n" +
                 "4. DO NOT hallucinate or include borderline/noisy edges just to make the path fully connected. " +
-                "It is PERFECTLY FINE (and expected) if the edges you select are disconnected from each other. Focus ONLY on high-confidence malicious behavior.\n\n" +
+                "It is PERFECTLY FINE if the edges you select are disconnected from each other. Focus ONLY on high-confidence malicious behavior.\n\n" +
                 "Output Format (MUST follow strictly):\n" +
                 "1. First, provide your analysis.\n" +
                 "2. Then, provide the kept edge IDs as a comma-separated list enclosed in brackets prefixed with 'EDGES:' like this:\n" +
@@ -249,6 +314,9 @@ public class LLMGraphFilter {
 
     /**
      * 发起网络请求，调用远程 LLM API。
+     * 优化#2：在 finally 中确保 HTTP 连接断开
+     * 优化#3：对 ErrorStream 进行 null 判断后再创建 Reader
+     * 优化#11：使用可配置的 temperature 和 max_tokens
      */
     @SuppressWarnings("unchecked")
     private String callLLMAPI(String prompt) {
@@ -256,6 +324,7 @@ public class LLMGraphFilter {
         int delayMs = 2000;
 
         for (int attempt = 1; attempt <= maxRetries; ++attempt) {
+            HttpURLConnection conn = null;
             try {
                 String endpoint = baseUrl;
                 if (!endpoint.endsWith("/chat/completions")) {
@@ -266,7 +335,7 @@ public class LLMGraphFilter {
                     }
                 }
                 URL url = new URL(endpoint);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn = (HttpURLConnection) url.openConnection();
 
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json");
@@ -285,58 +354,64 @@ public class LLMGraphFilter {
                 JSONObject requestBody = new JSONObject();
                 requestBody.put("model", modelName);
                 requestBody.put("messages", messages);
-                requestBody.put("temperature", 0.1);
-                requestBody.put("max_tokens", 20480);
+                requestBody.put("temperature", this.temperature);
+                requestBody.put("max_tokens", this.maxTokens);
 
                 try (OutputStream os = conn.getOutputStream()) {
-                    byte[] input = requestBody.toJSONString().getBytes("utf-8");
+                    byte[] input = requestBody.toJSONString().getBytes(StandardCharsets.UTF_8);
                     os.write(input, 0, input.length);
                 }
 
                 int responseCode = conn.getResponseCode();
                 if (responseCode >= 200 && responseCode < 300) {
-                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"));
-                    StringBuilder responseList = new StringBuilder();
-                    String responseLine;
-                    while ((responseLine = br.readLine()) != null) {
-                        responseList.append(responseLine.trim());
-                    }
+                    try (BufferedReader br = new BufferedReader(
+                            new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                        StringBuilder responseList = new StringBuilder();
+                        String responseLine;
+                        while ((responseLine = br.readLine()) != null) {
+                            responseList.append(responseLine.trim());
+                        }
 
-                    try {
-                        JSONParser parser = new JSONParser();
-                        JSONObject jsonResponse = (JSONObject) parser.parse(responseList.toString());
+                        try {
+                            JSONParser parser = new JSONParser();
+                            JSONObject jsonResponse = (JSONObject) parser.parse(responseList.toString());
 
-                        if (jsonResponse != null && jsonResponse.containsKey("choices")) {
-                            JSONArray choices = (JSONArray) jsonResponse.get("choices");
-                            if (choices != null && !choices.isEmpty()) {
-                                JSONObject firstChoice = (JSONObject) choices.get(0);
-                                if (firstChoice != null && firstChoice.containsKey("message")) {
-                                    JSONObject msg = (JSONObject) firstChoice.get("message");
-                                    if (msg != null && msg.containsKey("content")) {
-                                        return (String) msg.get("content");
+                            if (jsonResponse != null && jsonResponse.containsKey("choices")) {
+                                JSONArray choices = (JSONArray) jsonResponse.get("choices");
+                                if (choices != null && !choices.isEmpty()) {
+                                    JSONObject firstChoice = (JSONObject) choices.get(0);
+                                    if (firstChoice != null && firstChoice.containsKey("message")) {
+                                        JSONObject msg = (JSONObject) firstChoice.get("message");
+                                        if (msg != null && msg.containsKey("content")) {
+                                            return (String) msg.get("content");
+                                        }
                                     }
                                 }
                             }
-                        }
-                        System.err.println("Warning: Unexpected JSON format from LLM response.");
-                        System.err.println("Raw response: " + responseList.toString());
+                            System.err.println("Warning: Unexpected JSON format from LLM response.");
+                            System.err.println("Raw response: " + responseList.toString());
 
-                    } catch (org.json.simple.parser.ParseException pe) {
-                        System.err.println("Failed to parse JSON response from LLM:");
-                        System.err.println("Raw response: " + responseList.toString());
-                        pe.printStackTrace();
-                    } catch (Exception processEx) {
-                        System.err.println("Error processing JSON response:");
-                        processEx.printStackTrace();
+                        } catch (org.json.simple.parser.ParseException pe) {
+                            System.err.println("Failed to parse JSON response from LLM:");
+                            System.err.println("Raw response: " + responseList.toString());
+                            pe.printStackTrace();
+                        } catch (Exception processEx) {
+                            System.err.println("Error processing JSON response:");
+                            processEx.printStackTrace();
+                        }
                     }
                     return null;
                 } else {
                     System.err.println("LLM API Error (Attempt " + attempt + "): HTTP " + responseCode);
-                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getErrorStream(), "utf-8"));
-                    String line;
-                    if (br != null) {
-                        while ((line = br.readLine()) != null) {
-                            System.err.println(line);
+                    // 优化#3：先检查 ErrorStream 是否为 null，再创建 Reader
+                    java.io.InputStream errorStream = conn.getErrorStream();
+                    if (errorStream != null) {
+                        try (BufferedReader br = new BufferedReader(
+                                new InputStreamReader(errorStream, StandardCharsets.UTF_8))) {
+                            String line;
+                            while ((line = br.readLine()) != null) {
+                                System.err.println(line);
+                            }
                         }
                     }
                     if (attempt == maxRetries) {
@@ -351,6 +426,11 @@ public class LLMGraphFilter {
                 System.err.println("LLM API generic error (Attempt " + attempt + "): " + e.getMessage());
                 e.printStackTrace();
                 if (attempt == maxRetries) return null;
+            } finally {
+                // 优化#2：确保 HTTP 连接在 finally 中断开
+                if (conn != null) {
+                    conn.disconnect();
+                }
             }
 
             try {
@@ -364,7 +444,8 @@ public class LLMGraphFilter {
     }
 
     /**
-     * 解析方法：利用正则表达式从 AI 回复中提取 Edge ID。
+     * 解析方法：利用预编译正则表达式从 AI 回复中提取 Edge ID。
+     * 优化#14：使用预编译的 Pattern 常量避免重复编译。
      * 优先匹配 EDGES: [...] 格式，否则回退到原有的最后一个方括号匹配。
      */
     private Set<String> extractEdgeIdsFromResponse(String response) {
@@ -373,17 +454,15 @@ public class LLMGraphFilter {
             return edgeIds;
         }
 
-        // 优先匹配 EDGES: [...] 格式
-        Pattern edgesPattern = Pattern.compile("EDGES:\\s*\\[([^\\]]+)\\]", Pattern.CASE_INSENSITIVE);
-        Matcher edgesMatcher = edgesPattern.matcher(response);
+        // 优先匹配 EDGES: [...] 格式（使用预编译常量）
+        Matcher edgesMatcher = EDGES_PATTERN.matcher(response);
         String matchContent = null;
         if (edgesMatcher.find()) {
             matchContent = edgesMatcher.group(1);
         } else {
-            // 回退：取最后一个方括号中的内容（排除 ENTRY_NODES 标记的部分）
-            String responseWithoutEntryNodes = response.replaceAll("(?i)ENTRY_NODES:\\s*\\[[^\\]]*\\]", "");
-            Pattern pattern = Pattern.compile("\\[([a-zA-Z0-9_\\-\\s,\"']+)\\]");
-            Matcher matcher = pattern.matcher(responseWithoutEntryNodes);
+            // 回退：取最后一个方括号中的内容（排除 ENTRY_NODES 标记的部分，使用预编译常量）
+            String responseWithoutEntryNodes = ENTRY_NODES_REMOVE_PATTERN.matcher(response).replaceAll("");
+            Matcher matcher = BRACKET_CONTENT_PATTERN.matcher(responseWithoutEntryNodes);
             while (matcher.find()) {
                 matchContent = matcher.group(1);
             }
@@ -398,18 +477,14 @@ public class LLMGraphFilter {
                 }
             }
         } else {
-            System.err.println("Warning: Could not find edge IDs in expected format. Attempting fallback extraction.");
-            Pattern fallbackPattern = Pattern.compile("\\b(\\d+)\\b");
-            Matcher fallbackMatcher = fallbackPattern.matcher(response);
-            while (fallbackMatcher.find()) {
-                edgeIds.add(fallbackMatcher.group(1));
-            }
+            System.err.println("Warning: Could not find edge IDs in EDGES: [...] format or bracketed list. No edges extracted.");
         }
         return edgeIds;
     }
 
     /**
      * 从 LLM 响应中提取入口节点签名。
+     * 优化#14：使用预编译的 Pattern 常量。
      * 优先匹配 ENTRY_NODES: [...] 格式。
      */
     private Set<String> extractEntryNodesFromResponse(String response) {
@@ -418,8 +493,7 @@ public class LLMGraphFilter {
             return entryNodes;
         }
 
-        Pattern entryPattern = Pattern.compile("ENTRY_NODES:\\s*\\[([^\\]]+)\\]", Pattern.CASE_INSENSITIVE);
-        Matcher entryMatcher = entryPattern.matcher(response);
+        Matcher entryMatcher = ENTRY_NODES_PATTERN.matcher(response);
         if (entryMatcher.find()) {
             String matchContent = entryMatcher.group(1);
             String[] nodes = matchContent.split(",");
