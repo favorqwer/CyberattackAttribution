@@ -88,6 +88,53 @@ public class BackwardPropagate_pf {
     }
 
     /**
+     * [兜底方法] 从CPR压缩后的图中提取 POI 节点相关边的数据量作为 detectionSize。
+     * 
+     * 注意：此方法运行在CPR压缩后的图上，边的size可能因merge操作而被累加，
+     * 不一定代表原始单次事件的size。推荐优先使用 GetGraph.extractDetectionSizeFromGraph()
+     * 在原始图（CPR压缩前）上提取更准确的值。
+     * 
+     * 本方法仅在配置文件未指定且原始图提取也失败时，作为最后的兜底手段。
+     *
+     * 遍历 POI 节点的所有入边（即写入/发送到 POI 的数据），取最大的 size 作为 detectionSize。
+     * 如果 POI 节点没有入边，则尝试出边；如果都没有则保持默认值 0。
+     *
+     * @param detection POI 检测点的签名（如文件路径或网络地址）
+     */
+    public void autoDetectDetectionSize(String detection) {
+        EntityNode poiNode = graphIterator.getGraphVertex(detection);
+        if (poiNode == null) {
+            System.out.println("autoDetectDetectionSize: POI node '" + detection + "' not found in graph, keeping detectionSize=" + detectionSize);
+            return;
+        }
+
+        long maxSize = 0;
+        // 优先从入边（写入 POI 的数据）提取
+        Set<EventEdge> inEdges = graph.incomingEdgesOf(poiNode);
+        for (EventEdge edge : inEdges) {
+            if (edge.getSize() > maxSize) {
+                maxSize = edge.getSize();
+            }
+        }
+        // 如果入边没有数据量，尝试出边
+        if (maxSize == 0) {
+            Set<EventEdge> outEdges = graph.outgoingEdgesOf(poiNode);
+            for (EventEdge edge : outEdges) {
+                if (edge.getSize() > maxSize) {
+                    maxSize = edge.getSize();
+                }
+            }
+        }
+
+        if (maxSize > 0) {
+            detectionSize = maxSize;
+            System.out.println("autoDetectDetectionSize: extracted detectionSize=" + detectionSize + " from POI node '" + detection + "'");
+        } else {
+            System.out.println("autoDetectDetectionSize: no edge data found for POI node '" + detection + "', keeping detectionSize=" + detectionSize);
+        }
+    }
+
+    /**
      * calculateWeights - 非机器学习的权重计算方法
      * 
      * 手动设置三个维度的权重比例：

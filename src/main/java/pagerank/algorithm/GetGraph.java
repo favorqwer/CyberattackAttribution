@@ -723,6 +723,67 @@ public class GetGraph {
         iter.exportGraph(file);
     }
 
+    /**
+     * 从原始图（未经BackTrack/CPR压缩）中提取POI节点相关边的数据量作为detectionSize。
+     * 
+     * 与BackwardPropagate_pf.autoDetectDetectionSize不同，本方法在图压缩之前调用，
+     * 因此获取的是原始单次事件的size，而非CPR合并后的累积值，更加准确。
+     * 
+     * 策略：
+     * 1. 优先从入边（写入/发送到POI的数据）中取最大size
+     * 2. 若入边无数据，则从出边（从POI读取的数据）中取最大size
+     * 3. 若都无数据，返回0
+     * 
+     * @param graph 原始依赖图（GenerateGraph后、BackTrack前）
+     * @param detection POI检测点的签名（如文件路径或网络地址）
+     * @return 提取到的detectionSize，若未找到则返回0
+     */
+    public static double extractDetectionSizeFromGraph(
+            DirectedPseudograph<EntityNode, EventEdge> graph, String detection) {
+        // 在图中查找POI节点
+        EntityNode poiNode = null;
+        for (EntityNode node : graph.vertexSet()) {
+            if (node.getSignature().equals(detection)) {
+                poiNode = node;
+                break;
+            }
+        }
+        if (poiNode == null) {
+            System.out.println("extractDetectionSizeFromGraph: POI node '" + detection
+                    + "' not found in original graph");
+            return 0;
+        }
+
+        long maxSize = 0;
+        // 优先从入边（写入POI的数据）提取，取最大的单次事件size
+        Set<EventEdge> inEdges = graph.incomingEdgesOf(poiNode);
+        for (EventEdge edge : inEdges) {
+            if (edge.getSize() > maxSize) {
+                maxSize = edge.getSize();
+            }
+        }
+        // 如果入边没有数据量，尝试出边
+        if (maxSize == 0) {
+            Set<EventEdge> outEdges = graph.outgoingEdgesOf(poiNode);
+            for (EventEdge edge : outEdges) {
+                if (edge.getSize() > maxSize) {
+                    maxSize = edge.getSize();
+                }
+            }
+        }
+
+        if (maxSize > 0) {
+            System.out.println("extractDetectionSizeFromGraph: extracted detectionSize=" + maxSize
+                    + " from POI node '" + detection + "' (original graph, "
+                    + inEdges.size() + " in-edges, "
+                    + graph.outgoingEdgesOf(poiNode).size() + " out-edges)");
+        } else {
+            System.out.println("extractDetectionSizeFromGraph: no edge data found for POI node '"
+                    + detection + "' in original graph");
+        }
+        return maxSize;
+    }
+
     public static void main(String[] args) throws Exception {
         // String[] localIP={"129.22.21.193"};
         String[] localIP = { "10.0.2.15" };

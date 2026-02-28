@@ -139,8 +139,16 @@ public class Experiment {
     private void digestConfig(){
         POI = config.getProperty("POI");
 
+        // 解析 highRP，并自动将 POI 加入 highRP（确保 POI 节点的 RP 初始化为 1.0）
         String highRPString = config.getProperty("highRP","");
-        highRP = highRPString.split(",");
+        String[] parsedHighRP = highRPString.split(",");
+        Set<String> highRPSet = new LinkedHashSet<>(Arrays.asList(parsedHighRP));
+        if (POI != null && !POI.trim().isEmpty()) {
+            highRPSet.add(POI.trim());
+        }
+        // 移除空字符串
+        highRPSet.remove("");
+        highRP = highRPSet.toArray(new String[0]);
 
         String lowRPString = config.getProperty("lowRP","");
         lowRP = lowRPString.split(",");

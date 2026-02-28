@@ -110,7 +110,16 @@ public class ProcessOneLogCMD_19 {
             jsonLog.put("origionEdgeNumber", orignal.edgeSet().size());
             jsonLog.put("CostForOrigionGraph", timeCost);
             
-            // 2. 执行反向溯源分析
+            // 2. 当detectionSize未指定时，从原始图（CPR压缩前）中自动提取
+            if (detectionSize <= 0) {
+                double extractedSize = GetGraph.extractDetectionSizeFromGraph(orignal, detection);
+                if (extractedSize > 0) {
+                    detectionSize = extractedSize;
+                    System.out.println("Auto-detected detectionSize from original graph: " + detectionSize);
+                }
+            }
+
+            // 3. 执行反向溯源分析
             run_exp_backward(orignal, resultDir, suffix, threshold, trackOrigin, logfile, IP, detection, highRP, midRP,
                     lowRP, filename, detectionSize, seedSources, criticalEdges, mode, jsonLog, new String[0]);
 
@@ -162,9 +171,23 @@ public class ProcessOneLogCMD_19 {
             IterateGraph out = new IterateGraph(CPR.afterMerge);
             out.exportGraph(resultDir + "AfterCPR_" + filename + suffix);
 
+            // 当detectionSize未指定时，从BackTrack后的图（CPR压缩前）中提取
+            if (detectionSize <= 0) {
+                double extractedSize = GetGraph.extractDetectionSizeFromGraph(backtrack, detection);
+                if (extractedSize > 0) {
+                    detectionSize = extractedSize;
+                    System.out.println("Auto-detected detectionSize from backtrack graph (pre-CPR): " + detectionSize);
+                }
+            }
+
             BackwardPropagate_pf infer = new BackwardPropagate_pf(CPR.afterMerge);
 
             infer.setDetectionSize(detectionSize);
+            // 当detectionSize仍为0时（BackTrack图中也未提取到），作为最后兜底从CPR压缩后的图中提取
+            if (detectionSize <= 0) {
+                System.out.println("WARNING: detectionSize not available from config or pre-CPR graph, falling back to CPR graph extraction");
+                infer.autoDetectDetectionSize(detection);
+            }
             infer.setSeedSources(seedSources); // set structure weight for source
             start = System.currentTimeMillis();
             switch (mode) {
@@ -322,6 +345,15 @@ public class ProcessOneLogCMD_19 {
             // 1. 打开统计文件（用于记录每一步的节点/边数量、耗时等）
             os = new FileOutputStream(resultDir + filename + suffix + "_stats");
 
+            // 1.5 当detectionSize未指定时，从原始图（BackTrack/CPR压缩前）中自动提取
+            if (detectionSize <= 0) {
+                double extractedSize = GetGraph.extractDetectionSizeFromGraph(orignal, detection);
+                if (extractedSize > 0) {
+                    detectionSize = extractedSize;
+                    System.out.println("Auto-detected detectionSize from original graph: " + detectionSize);
+                }
+            }
+
             // 2. BackTrack 阶段（核心后向切片）
             // 从检测到的恶意事件节点开始，向后进行图切片只保留能够到达 detection 的节点和边（即可能导致这个恶意事件的因果路径）。
             // 得到一个大幅缩小的子图 backTrack.afterBackTrack。这步相当于 “从报警点往回找所有可能的前因”
@@ -369,6 +401,11 @@ public class ProcessOneLogCMD_19 {
             // 4. 特征权重计算
             BackwardPropagate_pf infer = new BackwardPropagate_pf(CPR.afterMerge);
             infer.setDetectionSize(detectionSize);
+            // 当detectionSize仍为0时（原始图中也未提取到），作为最后兜底从CPR压缩后的图中提取
+            if (detectionSize <= 0) {
+                System.out.println("WARNING: detectionSize not available from config or original graph, falling back to CPR graph extraction");
+                infer.autoDetectDetectionSize(detection);
+            }
             infer.setSeedSources(seedSources); // set structure weight for source
             start = System.currentTimeMillis();
             // 根据不同的mode参数，使用不同的权重计算策略。
