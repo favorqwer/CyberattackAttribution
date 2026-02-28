@@ -21,14 +21,16 @@ import java.net.URL;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static pagerank.main.ProcessOneLogCMD_19.DotToSvg;
 
 /**
  * LLMGraphFilter 模块：利用大语言模型 (LLM) 进行溯源图降噪和路径提取。
  * 1. 将图结构序列化为 LLM 可读的结构化 JSON。
- * 2. 引导 LLM 提取绝对确定的攻击边（允许不连通）。
- * 3. 算法后处理：如果提取出的子图不连通，在原图中寻找最短路径进行补全。
+ * 2. 引导 LLM 提取绝对确定的攻击边以及它认为正确的入口节点。
+ * 3. 算法后处理：以 POI、LLM 输出的边和入口节点为基础重建连通图，
+ *    保证每个入口节点都有一条到 POI 的路径。
  */
 public class LLMGraphFilter {
 
@@ -110,9 +112,12 @@ public class LLMGraphFilter {
             return originalGraph;
         }
 
-        // 7. 解析响应
+        // 7. 解析响应：提取边 ID 和 LLM 认为正确的入口节点
         Set<String> keptEdgeIds = extractEdgeIdsFromResponse(llmResponse);
         System.out.println("LLM selected " + keptEdgeIds.size() + " edges to keep.");
+
+        Set<String> llmEntryNodes = extractEntryNodesFromResponse(llmResponse);
+        System.out.println("LLM identified " + llmEntryNodes.size() + " entry nodes.");
 
         // 8. 重建图
         DirectedPseudograph<EntityNode, EventEdge> filteredGraph = buildFilteredGraph(originalGraph, keptEdgeIds);
@@ -136,8 +141,31 @@ public class LLMGraphFilter {
             System.err.println("Failed to generate intermediate LLM SVG: " + e.getMessage());
         }
         // ===========================================================================
-        // 9. 连通性检查与后处理补全算法
-        ensureConnectivity(originalGraph, filteredGraph);
+        // 9. 将 LLM 识别的入口节点加入过滤图（确保它们存在于图中）
+        Set<EntityNode> llmEntryEntityNodes = new HashSet<>();
+        for (EntityNode node : originalGraph.vertexSet()) {
+            if (llmEntryNodes.contains(node.getSignature())) {
+                if (!filteredGraph.containsVertex(node)) {
+                    filteredGraph.addVertex(node);
+                }
+                llmEntryEntityNodes.add(node);
+            }
+        }
+
+        // 10. 找到 POI 对应的节点
+        EntityNode poiNode = null;
+        for (EntityNode node : originalGraph.vertexSet()) {
+            if (node.getSignature().equals(poiEvent)) {
+                poiNode = node;
+                break;
+            }
+        }
+        if (poiNode != null && !filteredGraph.containsVertex(poiNode)) {
+            filteredGraph.addVertex(poiNode);
+        }
+
+        // 11. 连通性检查与后处理补全算法：保证每个入口节点到 POI 都有路径
+        ensureConnectivity(originalGraph, filteredGraph, llmEntryEntityNodes, poiNode);
 
         return filteredGraph;
     }
@@ -194,7 +222,7 @@ public class LLMGraphFilter {
     }
 
     /**
-     * 强调让 LLM 输出绝对属于攻击路径的边，且明确允许最终结果不连通。
+     * 强调让 LLM 输出绝对属于攻击路径的边，以及它认为正确的入口节点。
      */
     private String buildPrompt(String graphText, List<String> entryPoints, String poiEvent) {
         return "You are a cybersecurity expert analyzing a provenance graph to track an attack. " +
@@ -205,10 +233,18 @@ public class LLMGraphFilter {
                 "Your Task:\n" +
                 "1. Analyze the causal relationships carefully.\n" +
                 "2. Identify ONLY the edges that you are ABSOLUTELY CERTAIN belong to the malicious attack sequence.\n" +
-                "3. DO NOT hallucinate or include borderline/noisy edges just to make the path fully connected. " +
+                "3. From the possible attack entry points listed above, identify which ones you believe are the TRUE attack entry points " +
+                "(i.e., the actual origin of the attack). You may select one or more.\n" +
+                "4. DO NOT hallucinate or include borderline/noisy edges just to make the path fully connected. " +
                 "It is PERFECTLY FINE (and expected) if the edges you select are disconnected from each other. Focus ONLY on high-confidence malicious behavior.\n\n" +
-                "Output the IDs of the exact edges you consider part of the attack. " +
-                "At the end of your response, provide a comma-separated list of the kept EdgeIDs enclosed in brackets like this: [EdgeID1, EdgeID2, ...]";
+                "Output Format (MUST follow strictly):\n" +
+                "1. First, provide your analysis.\n" +
+                "2. Then, provide the kept edge IDs as a comma-separated list enclosed in brackets prefixed with 'EDGES:' like this:\n" +
+                "   EDGES: [EdgeID1, EdgeID2, ...]\n" +
+                "3. Finally, provide the entry node signatures you believe are the true attack entry points, " +
+                "as a comma-separated list enclosed in brackets prefixed with 'ENTRY_NODES:' like this:\n" +
+                "   ENTRY_NODES: [node_signature1, node_signature2, ...]\n" +
+                "The node signatures must exactly match the node IDs from the graph data.";
     }
 
     /**
@@ -328,7 +364,8 @@ public class LLMGraphFilter {
     }
 
     /**
-     * 解析方法：利用正则表达式从 AI 回复的繁杂文字中精准提取出 Edge ID。
+     * 解析方法：利用正则表达式从 AI 回复中提取 Edge ID。
+     * 优先匹配 EDGES: [...] 格式，否则回退到原有的最后一个方括号匹配。
      */
     private Set<String> extractEdgeIdsFromResponse(String response) {
         Set<String> edgeIds = new HashSet<>();
@@ -336,15 +373,24 @@ public class LLMGraphFilter {
             return edgeIds;
         }
 
-        Pattern pattern = Pattern.compile("\\[([a-zA-Z0-9_\\-\\s,\"']+)\\]");
-        Matcher matcher = pattern.matcher(response);
-        String lastMatch = null;
-        while (matcher.find()) {
-            lastMatch = matcher.group(1);
+        // 优先匹配 EDGES: [...] 格式
+        Pattern edgesPattern = Pattern.compile("EDGES:\\s*\\[([^\\]]+)\\]", Pattern.CASE_INSENSITIVE);
+        Matcher edgesMatcher = edgesPattern.matcher(response);
+        String matchContent = null;
+        if (edgesMatcher.find()) {
+            matchContent = edgesMatcher.group(1);
+        } else {
+            // 回退：取最后一个方括号中的内容（排除 ENTRY_NODES 标记的部分）
+            String responseWithoutEntryNodes = response.replaceAll("(?i)ENTRY_NODES:\\s*\\[[^\\]]*\\]", "");
+            Pattern pattern = Pattern.compile("\\[([a-zA-Z0-9_\\-\\s,\"']+)\\]");
+            Matcher matcher = pattern.matcher(responseWithoutEntryNodes);
+            while (matcher.find()) {
+                matchContent = matcher.group(1);
+            }
         }
 
-        if (lastMatch != null) {
-            String[] ids = lastMatch.split(",");
+        if (matchContent != null) {
+            String[] ids = matchContent.split(",");
             for (String id : ids) {
                 String cleanId = id.trim().replaceAll("[\"']", "");
                 if (!cleanId.isEmpty()) {
@@ -352,7 +398,7 @@ public class LLMGraphFilter {
                 }
             }
         } else {
-            System.err.println("Warning: Could not find edge IDs in expected bracket format. Attempting fallback extraction.");
+            System.err.println("Warning: Could not find edge IDs in expected format. Attempting fallback extraction.");
             Pattern fallbackPattern = Pattern.compile("\\b(\\d+)\\b");
             Matcher fallbackMatcher = fallbackPattern.matcher(response);
             while (fallbackMatcher.find()) {
@@ -360,6 +406,33 @@ public class LLMGraphFilter {
             }
         }
         return edgeIds;
+    }
+
+    /**
+     * 从 LLM 响应中提取入口节点签名。
+     * 优先匹配 ENTRY_NODES: [...] 格式。
+     */
+    private Set<String> extractEntryNodesFromResponse(String response) {
+        Set<String> entryNodes = new HashSet<>();
+        if (response == null || response.isEmpty()) {
+            return entryNodes;
+        }
+
+        Pattern entryPattern = Pattern.compile("ENTRY_NODES:\\s*\\[([^\\]]+)\\]", Pattern.CASE_INSENSITIVE);
+        Matcher entryMatcher = entryPattern.matcher(response);
+        if (entryMatcher.find()) {
+            String matchContent = entryMatcher.group(1);
+            String[] nodes = matchContent.split(",");
+            for (String node : nodes) {
+                String cleanNode = node.trim().replaceAll("[\"']", "");
+                if (!cleanNode.isEmpty()) {
+                    entryNodes.add(cleanNode);
+                }
+            }
+        } else {
+            System.err.println("Warning: Could not find ENTRY_NODES in LLM response. No entry nodes extracted.");
+        }
+        return entryNodes;
     }
 
     /**
@@ -386,71 +459,101 @@ public class LLMGraphFilter {
     }
 
     /**
-     * 检查 LLM 输出的子图是否连通（忽略方向）。如果不连通，则在原图中寻找最短路径，
-     * 将断开的连通分量重新缝合在一起。
-     * * 核心思想：贪心算法。维护一个“主连通块”，依次计算其与其它游离连通块之间的最短距离，
-     * 找到最短的桥接路径后，将该路径上的缺失节点和边补充到子图中，直至所有分量融为一体。
+     * 以 POI 节点和 LLM 识别的入口节点为基础，确保每个入口节点到 POI 都有路径。
      *
-     * @param originalGraph 原始的完整溯源图（包含所有系统行为日志）
-     * @param filteredGraph LLM 筛选出来的攻击子图（可能包含多个不相交的连通分量）
+     * @param originalGraph    原始的完整溯源图
+     * @param filteredGraph    LLM 筛选出来的攻击子图
+     * @param llmEntryNodes    LLM 认为正确的入口节点集合
+     * @param poiNode          POI（检测点）对应的节点
      */
     private void ensureConnectivity(DirectedPseudograph<EntityNode, EventEdge> originalGraph,
-                                    DirectedPseudograph<EntityNode, EventEdge> filteredGraph) {
+                                    DirectedPseudograph<EntityNode, EventEdge> filteredGraph,
+                                    Set<EntityNode> llmEntryNodes,
+                                    EntityNode poiNode) {
 
-        // 边界条件防御：如果过滤后的图中没有节点，或者只有一个节点，那它天生就是连通的，直接返回
         if (filteredGraph.vertexSet().size() <= 1) {
             return;
         }
 
-        // 1. 连通性检测（忽略边的方向）
-        // 因为攻击路径中的边可能有正向（如进程创建子进程）和反向（如进程读取文件），
-        // 我们只关心它们在物理拓扑上是否相连，所以将其包装为无向图视图 (AsUndirectedGraph)
+        AsUndirectedGraph<EntityNode, EventEdge> undirectedOriginal = new AsUndirectedGraph<>(originalGraph);
+        DijkstraShortestPath<EntityNode, EventEdge> dijkstra = new DijkstraShortestPath<>(undirectedOriginal);
+
+        // ============ Phase 1: Ensure each LLM entry node has a path to POI ============
+        if (poiNode != null && !llmEntryNodes.isEmpty()) {
+            System.out.println("Phase 1: Ensuring each LLM entry node has a path to POI...");
+
+            for (EntityNode entryNode : llmEntryNodes) {
+                AsUndirectedGraph<EntityNode, EventEdge> curUndirected = new AsUndirectedGraph<>(filteredGraph);
+                ConnectivityInspector<EntityNode, EventEdge> curInspector = new ConnectivityInspector<>(curUndirected);
+
+                if (filteredGraph.containsVertex(entryNode) && filteredGraph.containsVertex(poiNode)
+                        && curInspector.pathExists(entryNode, poiNode)) {
+                    System.out.println("  Entry node [" + entryNode.getSignature() + "] already connected to POI.");
+                    continue;
+                }
+
+                try {
+                    GraphPath<EntityNode, EventEdge> path = dijkstra.getPath(entryNode, poiNode);
+                    if (path != null) {
+                        System.out.println("  Patching path from entry [" + entryNode.getSignature()
+                                + "] to POI [" + poiNode.getSignature() + "], length=" + path.getLength());
+                        addPathToGraph(originalGraph, filteredGraph, path);
+                    } else {
+                        System.err.println("  Warning: No path found from entry node [" + entryNode.getSignature()
+                                + "] to POI in original graph.");
+                    }
+                } catch (Exception e) {
+                    System.err.println("  Error finding path for entry [" + entryNode.getSignature() + "]: " + e.getMessage());
+                }
+            }
+        } else {
+            if (poiNode == null) {
+                System.err.println("Warning: POI node not found in original graph. Skipping entry-to-POI patching.");
+            }
+            if (llmEntryNodes.isEmpty()) {
+                System.out.println("No LLM entry nodes identified. Skipping entry-to-POI patching.");
+            }
+        }
+
+        // ============ Phase 2: Stitch remaining disconnected components ============
         AsUndirectedGraph<EntityNode, EventEdge> undirectedFiltered = new AsUndirectedGraph<>(filteredGraph);
+        ConnectivityInspector<EntityNode, EventEdge> finalInspector = new ConnectivityInspector<>(undirectedFiltered);
+        List<Set<EntityNode>> connectedComponents = finalInspector.connectedSets();
 
-        // 实例化连通性检测器
-        ConnectivityInspector<EntityNode, EventEdge> inspector = new ConnectivityInspector<>(undirectedFiltered);
-
-        // 获取所有的连通分量（Connected Components）。
-        // 每一个 Set<EntityNode> 代表一个孤立的小岛（岛内部的节点是连通的，岛与岛之间断开）
-        List<Set<EntityNode>> connectedComponents = inspector.connectedSets();
-
-        // 如果孤岛数量小于等于1，说明整个图已经是一个完整的连通块，无需修补
         if (connectedComponents.size() <= 1) {
-            System.out.println("LLM generated graph is already fully connected.");
+            System.out.println("Graph is fully connected after entry-to-POI patching.");
             return;
         }
 
-        System.out.println("Detected " + connectedComponents.size() + " disconnected components. Patching missing edges...");
+        System.out.println("Phase 2: " + connectedComponents.size() + " components remain. Stitching disconnected components...");
 
-        // 2. 准备寻路算法工具
-        // 同样忽略原图的方向，因为攻击链的上下文补充可能需要逆向追溯
-        AsUndirectedGraph<EntityNode, EventEdge> undirectedOriginal = new AsUndirectedGraph<>(originalGraph);
-        // 在原图上实例化 Dijkstra 最短路径算法对象，用于后续寻找“桥梁”
-        DijkstraShortestPath<EntityNode, EventEdge> dijkstra = new DijkstraShortestPath<>(undirectedOriginal);
+        Set<EntityNode> mainComponent = null;
+        if (poiNode != null) {
+            for (Set<EntityNode> comp : connectedComponents) {
+                if (comp.contains(poiNode)) {
+                    mainComponent = new HashSet<>(comp);
+                    break;
+                }
+            }
+        }
+        if (mainComponent == null) {
+            mainComponent = new HashSet<>(connectedComponents.stream()
+                    .max(Comparator.comparingInt(Set::size))
+                    .orElse(connectedComponents.get(0)));
+        }
 
-        // 3. 执行贪心缝合策略
-        // 将第一个连通块作为“主块”（根据地）。接下来的目标是把其他的块逐个拉拢合并到这个主块中。
-        Set<EntityNode> mainComponent = new HashSet<>(connectedComponents.get(0));
-
-        // 遍历剩下所有需要被合并的游离块
-        for (int i = 1; i < connectedComponents.size(); i++) {
-            Set<EntityNode> targetComponent = connectedComponents.get(i);
+        for (Set<EntityNode> targetComponent : connectedComponents) {
+            if (mainComponent.containsAll(targetComponent)) {
+                continue;
+            }
 
             GraphPath<EntityNode, EventEdge> bestPath = null;
             int minPathLength = Integer.MAX_VALUE;
 
-            // 双层循环寻找主块与当前游离块之间的“全局最短路径”
-            // 外层循环：遍历主块中的每一个节点，将其作为寻路起点
             for (EntityNode sourceNode : mainComponent) {
-                // 计算该起点到原图中其他所有节点的最短路径树（缓存起来以提高效率）
                 ShortestPathAlgorithm.SingleSourcePaths<EntityNode, EventEdge> paths = dijkstra.getPaths(sourceNode);
-
-                // 内层循环：遍历游离块中的每一个节点，将其作为寻路终点
                 for (EntityNode targetNode : targetComponent) {
-                    // 获取从 sourceNode 到 targetNode 的具体路径
                     GraphPath<EntityNode, EventEdge> path = paths.getPath(targetNode);
-
-                    // 如果存在路径，且比当前记录的“最短桥梁”还要短，则更新记录
                     if (path != null && path.getLength() < minPathLength) {
                         minPathLength = path.getLength();
                         bestPath = path;
@@ -458,39 +561,34 @@ public class LLMGraphFilter {
                 }
             }
 
-            // 4. 将最短路径（桥梁）上的节点和边补充进过滤后的图中
             if (bestPath != null) {
-                // 遍历这条补全路径上的每一条边
-                for (EventEdge missingEdge : bestPath.getEdgeList()) {
-                    // 提取这条边两端的节点（使用原图的方法获取正确的起点和终点，保留原有向图的方向性）
-                    EntityNode edgeSource = originalGraph.getEdgeSource(missingEdge);
-                    EntityNode edgeTarget = originalGraph.getEdgeTarget(missingEdge);
-
-                    // 如果过滤图中还没有这两个节点，先将其加入图中（防止添加边时报 NoSuchVertexException）
-                    if (!filteredGraph.containsVertex(edgeSource)) filteredGraph.addVertex(edgeSource);
-                    if (!filteredGraph.containsVertex(edgeTarget)) filteredGraph.addVertex(edgeTarget);
-
-                    // 如果这条边也不在过滤图中，则将其添加进去
-                    if (!filteredGraph.containsEdge(missingEdge)) {
-                        filteredGraph.addEdge(edgeSource, edgeTarget, missingEdge);
-                    }
-
-                    // 动态扩充主块的势力范围：
-                    // 把桥梁路径上的节点也加入主块，这样在下一轮循环合并其他游离块时，
-                    // 新加入的节点也可以作为寻找更短路径的起点
-                    mainComponent.add(edgeSource);
-                    mainComponent.add(edgeTarget);
-                }
+                addPathToGraph(originalGraph, filteredGraph, bestPath);
             } else {
-                // 极端情况：原图本身就是断开的，主块和目标块之间在物理上没有任何路径相连
-                System.err.println("Warning: Could not find a path to connect component " + i + " in the original graph.");
+                System.err.println("Warning: Could not find a path to connect a disconnected component in the original graph.");
             }
 
-            // 本轮缝合结束，无论是否成功找到路径，都把目标块中的所有节点并入主块，
-            // 确保所有的节点在下一轮都能作为起点，参与后续的缝合计算
             mainComponent.addAll(targetComponent);
         }
 
         System.out.println("Graph patching complete.");
+    }
+
+    /**
+     * 将一条路径上的所有边和节点添加到过滤图中。
+     */
+    private void addPathToGraph(DirectedPseudograph<EntityNode, EventEdge> originalGraph,
+                                DirectedPseudograph<EntityNode, EventEdge> filteredGraph,
+                                GraphPath<EntityNode, EventEdge> path) {
+        for (EventEdge edge : path.getEdgeList()) {
+            EntityNode edgeSource = originalGraph.getEdgeSource(edge);
+            EntityNode edgeTarget = originalGraph.getEdgeTarget(edge);
+
+            if (!filteredGraph.containsVertex(edgeSource)) filteredGraph.addVertex(edgeSource);
+            if (!filteredGraph.containsVertex(edgeTarget)) filteredGraph.addVertex(edgeTarget);
+
+            if (!filteredGraph.containsEdge(edge)) {
+                filteredGraph.addEdge(edgeSource, edgeTarget, edge);
+            }
+        }
     }
 }
