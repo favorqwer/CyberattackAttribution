@@ -1130,196 +1130,6 @@ public class BackwardPropagate_pf {
         return projectionVector;
     }
 
-    private RealVector computeProjectionVector_old_v2(RealMatrix matrixG0, RealMatrix matrixG1) {
-        // Compute projection matrix for matrixAll by maximizing the separation between
-        // groups matrixG0 and matrixG1
-        // We use FDA (i.e., sw-1 (u1-u2))
-
-        // Compute mu0 (i.e., mean vector of group 0)
-        RealVector mu0 = new ArrayRealVector(new double[] { 0, 0, 0 });
-        for (int i = 0; i < matrixG0.getRowDimension(); i++) {
-            mu0 = mu0.add(matrixG0.getRowVector(i));
-        }
-        mu0.mapDivideToSelf(matrixG0.getRowDimension());
-
-        // Compute mu1 (i.e., mean vector of group 1)
-        RealVector mu1 = new ArrayRealVector(new double[] { 0, 0, 0 });
-        for (int i = 0; i < matrixG1.getRowDimension(); i++) {
-            mu1 = mu1.add(matrixG1.getRowVector(i));
-        }
-        mu1.mapDivideToSelf(matrixG1.getRowDimension());
-
-        System.out.println("Mean vector of group 0 mu0:");
-        printRealVector(mu0);
-        System.out.println();
-        System.out.println("Mean vector of group 1 mu1:");
-        printRealVector(mu1);
-        System.out.println();
-
-        // Compute within-group scattering matrix sw
-        RealMatrix sw = new Array2DRowRealMatrix(3, 3);
-        for (int i = 0; i < matrixG0.getRowDimension(); i++) {
-            sw = sw.add(matrixG0.getRowVector(i).subtract(mu0).outerProduct(matrixG0.getRowVector(i).subtract(mu0)));
-        }
-        for (int i = 0; i < matrixG1.getRowDimension(); i++) {
-            sw = sw.add(matrixG1.getRowVector(i).subtract(mu1).outerProduct(matrixG1.getRowVector(i).subtract(mu1)));
-        }
-
-        // System.out.println("Within-group scattering matrix sw:");
-        // printRealMatrix(sw);
-        // System.out.println();
-
-        // Compute between-group scattering matrix sb
-        RealMatrix sb = mu0.subtract(mu1).outerProduct(mu0.subtract(mu1));
-
-        // System.out.println("Between-group scattering matrix sb:");
-        // printRealMatrix(sb);
-        // System.out.println();
-
-        // MP pseudo-inverse of sw
-        DecompositionSolver solver = new SingularValueDecomposition(sw).getSolver();
-        RealMatrix swInv = solver.getInverse(); // use MP pseudo-inverse
-        // RealMatrix swInv = MatrixUtils.inverse(sw);
-
-        // System.out.println("MP pseudo-inverse of sw, swInv:");
-        // printRealMatrix(swInv);
-        // System.out.println();
-
-        // Is sw singular
-        boolean isSwSingular = !solver.isNonSingular();
-
-        // Handle singular sw and non-singular sw differently
-        // TODO: handle singular sw using generalized LDA
-        RealVector projectionVector = null;
-        if (isSwSingular) {
-            System.out.println("sw is singular");
-            if (matrixG0.getRowDimension() == 1 && matrixG1.getRowDimension() == 1) {
-                // Special case: matrixG0 and matrixG1 both contain only 1 row (sw = matrix(0))
-                System.out.println("Both group 0 and group 1 only have 1 edge. Singular sw = matrix(0)");
-            }
-            if (sw.getRow(2)[0] == 0.0 && sw.getRow(2)[1] == 0.0 && sw.getRow(2)[2] == 0.0) {
-                System.out.println("3rd row of sw is all-zero");
-            }
-
-            // We compare the fisherObjectiveNumerator() of three candidates
-            RealVector projectionVectorCandidate1 = new ArrayRealVector(new double[] { 0.1, 0.5, 0.4 });
-            projectionVectorCandidate1.mapDivideToSelf(projectionVectorCandidate1.getNorm());
-            double fisherObjectiveNumerator1 = fisherObjectiveNumerator(sb, projectionVectorCandidate1);
-            System.out.println("Fisher objective numerator for candidate projection vector " + "(0.1, 0.5, 0.4)/norm"
-                    + " is:" + fisherObjectiveNumerator1);
-            System.out.println("Fisher objective denominator for candidate projection vector " + "(0.1, 0.5, 0.4)/norm"
-                    + " is:" + fisherObjectiveDenominator(sw, projectionVectorCandidate1));
-
-            RealVector projectionVectorCandidate2 = mu0.subtract(mu1);
-            projectionVectorCandidate2.mapDivideToSelf(projectionVectorCandidate2.getNorm());
-            double fisherObjectiveNumerator2 = fisherObjectiveNumerator(sb, projectionVectorCandidate2);
-            System.out.println("Fisher objective numerator for candidate projection vector " + "(mu0-mu1)/norm" + " is:"
-                    + fisherObjectiveNumerator2);
-            System.out.println("Fisher objective denominator for candidate projection vector " + "(mu0-mu1)/norm"
-                    + " is:" + fisherObjectiveDenominator(sw, projectionVectorCandidate2));
-
-            RealVector projectionVectorCandidate3 = swInv.operate(mu0.subtract(mu1));
-            projectionVectorCandidate3.mapDivideToSelf(projectionVectorCandidate3.getNorm());
-            double fisherObjectiveNumerator3 = fisherObjectiveNumerator(sb, projectionVectorCandidate3);
-            System.out.println("Fisher objective numerator for candidate projection vector " + "(swInv*(mu0-mu1))/norm"
-                    + " is:" + fisherObjectiveNumerator3);
-            System.out.println("Fisher objective denominator for candidate projection vector "
-                    + "(swInv*(mu0-mu1))/norm" + " is:" + fisherObjectiveDenominator(sw, projectionVectorCandidate3));
-
-            if (fisherObjectiveNumerator1 > fisherObjectiveNumerator2
-                    && fisherObjectiveNumerator1 > fisherObjectiveNumerator3) {
-                System.out.println("projection vector = (0.1, 0.5, 0.4)/norm");
-                projectionVector = projectionVectorCandidate1;
-            } else if (fisherObjectiveNumerator2 > fisherObjectiveNumerator1
-                    && fisherObjectiveNumerator2 > fisherObjectiveNumerator3) {
-                System.out.println("projection vector = (mu0-mu1)/norm");
-                projectionVector = projectionVectorCandidate2;
-            } else if (fisherObjectiveNumerator3 > fisherObjectiveNumerator1
-                    && fisherObjectiveNumerator3 > fisherObjectiveNumerator2) {
-                System.out.println("projection vector = (swInv*(mu0-mu1))/norm");
-                projectionVector = projectionVectorCandidate3;
-            } else {
-                System.out.println("projection vector = (mu0-mu1)/norm");
-                projectionVector = projectionVectorCandidate2;
-            }
-        } else {
-            // Inverse of sw exists. We just use MP pseudo-inverse: swInv
-            System.out.println("sw is non-singular");
-            System.out.println("projection vector = swInv*(mu0-mu1)");
-            projectionVector = swInv.operate(mu0.subtract(mu1)); // FDA formula: swInv*(mu0-mu1)
-
-            // Normalize
-            projectionVector.mapDivideToSelf(projectionVector.getNorm());
-        }
-
-        assertNotNull(projectionVector);
-
-        System.out.println("projectionVector after self-normalization:");
-        printRealVector(projectionVector);
-        System.out.println();
-
-        return projectionVector;
-    }
-
-    private RealVector computeProjectionVector_old_v1(RealMatrix matrixG0, RealMatrix matrixG1) {
-        // Compute projection matrix for matrixAll by maximizing the separation between
-        // groups matrixG0 and matrixG1
-        // We use FDA (i.e., sw-1 (u1-u2))
-
-        // Compute mu0 (i.e., mean vector of group 0)
-        RealVector mu0 = new ArrayRealVector(new double[] { 0, 0, 0 });
-        for (int i = 0; i < matrixG0.getRowDimension(); i++) {
-            mu0 = mu0.add(matrixG0.getRowVector(i));
-        }
-        mu0.mapDivideToSelf(matrixG0.getRowDimension());
-
-        // Compute mu1 (i.e., mean vector of group 1)
-        RealVector mu1 = new ArrayRealVector(new double[] { 0, 0, 0 });
-        for (int i = 0; i < matrixG1.getRowDimension(); i++) {
-            mu1 = mu1.add(matrixG1.getRowVector(i));
-        }
-        mu1.mapDivideToSelf(matrixG1.getRowDimension());
-
-        System.out.println("Mean vector of group 0 mu0:");
-        printRealVector(mu0);
-        System.out.println("Mean vector of group 1 mu1:");
-        printRealVector(mu1);
-
-        RealVector projectionVector;
-        // Special case: matrixG0 and matrixG1 both contain only 1 row (sw = matrix(0))
-        if (matrixG0.getRowDimension() == 1 && matrixG1.getRowDimension() == 1) {
-            projectionVector = mu0.subtract(mu1);
-        } else {
-            // Compute within-group scattering matrix sw
-            RealMatrix sw = new Array2DRowRealMatrix(3, 3);
-            for (int i = 0; i < matrixG0.getRowDimension(); i++) {
-                sw = sw.add(
-                        matrixG0.getRowVector(i).subtract(mu0).outerProduct(matrixG0.getRowVector(i).subtract(mu0)));
-            }
-            for (int i = 0; i < matrixG1.getRowDimension(); i++) {
-                sw = sw.add(
-                        matrixG1.getRowVector(i).subtract(mu1).outerProduct(matrixG1.getRowVector(i).subtract(mu1)));
-            }
-            // System.out.println("Within-group scattering matrix sw:");
-            // printRealMatrix(sw);
-
-            // Compute projection vector using the FDA formula: sw-1 (u1-u2)
-            DecompositionSolver solver = new SingularValueDecomposition(sw).getSolver();
-            RealMatrix swInv = solver.getInverse(); // use MP pseudo-inverse
-            // RealMatrix swInv = MatrixUtils.inverse(sw);
-
-            // System.out.println("swInv:");
-            // printRealMatrix(swInv);
-
-            projectionVector = swInv.operate(mu0.subtract(mu1)); // swInv*(mu0-mu1)
-        }
-
-        // Normalize
-        projectionVector.mapDivideToSelf(projectionVector.getNorm());
-
-        return projectionVector;
-    }
-
     private double fisherObjective(RealMatrix sb, RealMatrix sw, RealVector v) {
         // J(v) = (v^T*sb*v)/(v^T*sw*v)
         // sb: between-group scattering matrix, sw: within-group scattering matrix
@@ -1442,33 +1252,6 @@ public class BackwardPropagate_pf {
     private double getCombineWeight(EventEdge edge, double timeTotal, double amountTotal, double structureTotal) {
         return 0.1 * (edge.timeWeight / timeTotal) + 0.5 * (edge.amountWeight / amountTotal)
                 + 0.4 * (edge.structureWeight / structureTotal);
-    }
-
-    private double getStructureWeight_old_v1(EventEdge e) {
-        EntityNode source = e.getSource();
-        EntityNode target = e.getSink();
-        double numOfInEdgesOfTarget = graph.incomingEdgesOf(target).size() * 1.0;
-        double weight = 0.0;
-        double numOfInEdgesOfSource = graph.incomingEdgesOf(source).size() * 1.0;
-        if (numOfInEdgesOfSource == 0.0) {
-            weight = 1 / numOfInEdgesOfTarget;
-        } else {
-            weight = 1 / numOfInEdgesOfTarget + 1 / numOfInEdgesOfSource;
-        }
-        if (weight == 0.0) {
-            System.out.println("numOfInEdgesOfSource: " + numOfInEdgesOfSource);
-            System.out.println("numOfInEdgesOfTarget: " + numOfInEdgesOfTarget);
-        }
-        return weight;
-    }
-
-    private double getStructureWeight_old_v2(EventEdge e) {
-        EntityNode source = e.getSource();
-        int incomingNumber = graph.inDegreeOf(source);
-        if (incomingNumber == 0) {
-            return 0.0;
-        }
-        return 1 / (incomingNumber * 1.0);
     }
 
     public void setSeedSources(Set<String> set) {
@@ -1816,26 +1599,6 @@ public class BackwardPropagate_pf {
         }
     }
 
-    private double getTimeWeight_old(EventEdge edge) {
-        if (edge.getEndTime().equals(POITime)) {
-            return 1;
-        } else {
-            BigDecimal diff = POITime.subtract(edge.getEndTime());
-            // System.out.println("Time diff is: "+ diff.toString());
-            if (diff.compareTo(new BigDecimal(1)) > 0) {
-                return 1 / diff.doubleValue();
-            }
-            double res = Math.log(1 / diff.doubleValue());
-            if (res == 0.0) {
-                System.out.println("timeWight should not be zero");
-
-            }
-            if (res < 0.0)
-                System.out.println("Minus TimeWeight:" + res);
-            return res;
-        }
-    }
-
     private double getTimeWeight(EventEdge edge) {
         // Range: [0, Double.MAX_VALUE]
         double res;
@@ -1852,11 +1615,6 @@ public class BackwardPropagate_pf {
             // Math.abs(edge.getEndTime().doubleValue()- POITime.doubleValue()));
         }
         return res;
-    }
-
-    private double getAmountWeight_old(EventEdge edge) {
-        // System.out.println("Amount weight: "+ edge.getSize());
-        return edge.getSize();
     }
 
     private double getAmountWeight(EventEdge edge) {
