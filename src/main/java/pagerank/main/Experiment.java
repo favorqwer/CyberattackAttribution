@@ -7,10 +7,6 @@ import org.jgrapht.graph.DirectedPseudograph;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Properties;
 import java.util.*;
 
 /**
@@ -99,7 +95,7 @@ public class Experiment {
     }
 
     /**
-     * 构造函数 - 仅从配置文件创建实验
+     * 构造函数 仅从配置文件创建实验
      * 
      * @param configFile 配置文件
      * @throws IOException 如果文件读取失败
@@ -156,10 +152,10 @@ public class Experiment {
         String[] defaultMidRP = MetaConfig.midRP;
         String midRPString = config.getProperty("midRP","");
         String[] additionalMidRP = midRPString.split(",");
-        List<String> _ = new ArrayList<>();
-        _.addAll(Arrays.asList(defaultMidRP));
-        _.addAll(Arrays.asList(additionalMidRP));
-        midRP = _.toArray(new String[_.size()]);
+        List<String> tmp = new ArrayList<>();
+        tmp.addAll(Arrays.asList(defaultMidRP));
+        tmp.addAll(Arrays.asList(additionalMidRP));
+        midRP = tmp.toArray(new String[tmp.size()]);
 
         threshold = Double.parseDouble(config.getProperty("threshold","0"));
 

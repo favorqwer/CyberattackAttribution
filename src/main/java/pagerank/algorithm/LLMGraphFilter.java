@@ -297,11 +297,10 @@ public class LLMGraphFilter {
                 "Graph Data (JSON):\n" + graphText + "\n\n" +
                 "Your Task:\n" +
                 "1. Analyze the causal relationships carefully.\n" +
-                "2. Identify ONLY the edges that you are ABSOLUTELY CERTAIN belong to the malicious attack sequence.\n" +
-                "3. From the possible attack entry points listed above, identify which ones you believe are the TRUE attack entry points " +
+                "2. Identify ONLY the edges that you are ABSOLUTELY CERTAIN belong to the malicious attack sequence.DO NOT hallucinate or include borderline/noisy edges just to make the path fully connected.\n" +
+                "3. From the possible attack entry points listed above, identify which ones you believe are ABSOLUTELY CERTAIN belong to the true attack entry points " +
                 "(i.e., the actual origin of the attack). You may select one or more.\n" +
-                "4. DO NOT hallucinate or include borderline/noisy edges just to make the path fully connected. " +
-                "It is PERFECTLY FINE if the edges you select are disconnected from each other. Focus ONLY on high-confidence malicious behavior.\n\n" +
+                "It is FINE if the edges you select are disconnected from each other. Focus ONLY on high-confidence malicious behavior.\n\n" +
                 "Output Format (MUST follow strictly):\n" +
                 "1. First, provide your analysis.\n" +
                 "2. Then, provide the kept edge IDs as a comma-separated list enclosed in brackets prefixed with 'EDGES:' like this:\n" +
