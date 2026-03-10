@@ -661,6 +661,9 @@ public class BackwardPropagate_pf {
 
     private List<Double> computeFinalWeights(List<EventEdge> allEdges) {
         System.out.println("computeFinalWeights invoked!");
+        if (allEdges.isEmpty()) {
+            return new ArrayList<>();
+        }
         // Compute the final weight (weights) for an edge using the three individual
         // weights (timeWeights, amountWeights, structureWeights).
         // Note: timeWeights, amountWeights, structureWeights should be already
@@ -713,6 +716,17 @@ public class BackwardPropagate_pf {
                 System.out.print("Outlier edge: ");
                 printEdgeWeights(edge);
             }
+        }
+
+        if (allEdges.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        if (nonOutlierEdges.isEmpty()) {
+            System.out.println("No non-outlier edges available for clustering, falling back to heuristic weights.");
+            List<Double> finalWeights = computeHeuristicFinalWeights(allEdges);
+            scaleRange(finalWeights);
+            return finalWeights;
         }
 
         // Clustering
@@ -956,7 +970,10 @@ public class BackwardPropagate_pf {
         // Note: edges in clusterResults (for computing projection vector) may not be
         // exactly allEdges (for compute final weights)
 
-        assert (clusterResults.size() == 2); // assert there are only 2 groups
+        if (!hasUsableClusters(clusterResults)) {
+            System.out.println("Clustering did not produce two non-empty groups, falling back to heuristic weights.");
+            return computeHeuristicFinalWeights(allEdges);
+        }
 
         // Store weights data in RealMatrix for easy processing
         EventEdge edge;
@@ -1011,6 +1028,55 @@ public class BackwardPropagate_pf {
         double[] finalWeights = weightsProjectedAll.toArray();
 
         return new ArrayList<Double>(Arrays.asList(ArrayUtils.toObject(finalWeights)));
+    }
+
+    private boolean hasUsableClusters(List<Cluster<EventEdgeWrapper>> clusterResults) {
+        if (clusterResults == null || clusterResults.size() != 2) {
+            return false;
+        }
+
+        for (Cluster<EventEdgeWrapper> cluster : clusterResults) {
+            if (cluster == null || cluster.getPoints() == null || cluster.getPoints().isEmpty()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private List<Double> computeHeuristicFinalWeights(List<EventEdge> allEdges) {
+        List<Double> finalWeights = new ArrayList<>(Collections.nCopies(allEdges.size(), 0.0));
+        Map<Long, Integer> edgeIndexMap = buildEdgeIndexMap(allEdges);
+
+        for (EntityNode node : graph.vertexSet()) {
+            Set<EventEdge> outEdges = graph.outgoingEdgesOf(node);
+            if (outEdges.isEmpty()) {
+                continue;
+            }
+
+            double amount = 0.0;
+            for (EventEdge outEdge : outEdges) {
+                amount += outEdge.getSize();
+            }
+
+            for (EventEdge outEdge : outEdges) {
+                Integer index = edgeIndexMap.get(outEdge.id);
+                if (index == null) {
+                    continue;
+                }
+
+                double weightValue;
+                if (amount < 1e-8) {
+                    weightValue = 0.5 * outEdge.timeWeight + 0.5 * outEdge.structureWeight;
+                } else {
+                    weightValue = 0.3333 * outEdge.timeWeight + 0.3333 * outEdge.structureWeight
+                            + 0.3334 * outEdge.amountWeight;
+                }
+                finalWeights.set(index, weightValue);
+            }
+        }
+
+        return finalWeights;
     }
 
     private RealVector computeProjectionVector(RealMatrix matrixG0, RealMatrix matrixG1) {
@@ -1568,12 +1634,24 @@ public class BackwardPropagate_pf {
 
     private void scaleRange(List<Double> numbers) {
         // In-place scale to (0,1+)
+        if (numbers.isEmpty()) {
+            return;
+        }
+
         DescriptiveStatistics stats = new DescriptiveStatistics();
         for (double n : numbers) {
             stats.addValue(n);
         }
         double min = stats.getMin();
         double max = stats.getMax();
+        if (Math.abs(max - min) < 1e-12) {
+            for (int i = 0; i < numbers.size(); i++) {
+                numbers.set(i, 1.0);
+            }
+            System.out.println("Scaling skipped because all weights are identical.");
+            return;
+        }
+
         double secondMin = max;
         for (double n : numbers) {
             if (n == min)
