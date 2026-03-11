@@ -6,7 +6,7 @@
             "name": "Run ExperimentRunnerCmd",
             "request": "launch",
             "mainClass": "pagerank.main.ExperimentRunnerCmd",
-            "args": "./test ./test/result shellshock-pene",
+            "args": "./test ./test/result attack.txt",
             "projectName": "reptracker"
         }
     ]

@@ -1,4 +1,9 @@
 {
     "java.compile.nullAnalysis.mode": "disabled",
-    "java.configuration.updateBuildConfiguration": "interactive"
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "chat.tools.terminal.autoApprove": {
+        "mvn -q -DskipTests package": true,
+        "c:": true,
+        "&": true
+    }
 }

@@ -178,8 +178,7 @@ public class ExperimentRunnerCmd {
      */
     //Fang: for benign cases: avoid to parse log several times
     public void run2() throws FileNotFoundException {
-        //todo 此处固定mode
-        mode = "clusterall";
+        mode = resolveMode();
         
         // 1. 创建结果输出目录
         File resDir = makeResDir(PathToRes);
@@ -284,6 +283,18 @@ public class ExperimentRunnerCmd {
         Calendar calendar = Calendar.getInstance();
         Timestamp currentTimestamp = new java.sql.Timestamp(calendar.getTime().getTime());
         return currentTimestamp;
+    }
+
+    private String resolveMode() {
+        String configuredMode = System.getProperty("depimpact.mode");
+        if (configuredMode == null || configuredMode.trim().isEmpty()) {
+            configuredMode = System.getenv("DEPIMPACT_MODE");
+        }
+        if (configuredMode == null || configuredMode.trim().isEmpty()) {
+            configuredMode = "adaptivefusion";
+        }
+        System.out.println("Weight mode: " + configuredMode);
+        return configuredMode.trim();
     }
 
     private void logging(Experiment e, File logFile) throws IOException {

@@ -10,6 +10,7 @@ import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.jgrapht.alg.connectivity.ConnectivityInspector;
 import org.jgrapht.graph.DirectedPseudograph;
 import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
 import pagerank.entity.EntityNode;
 import pagerank.entity.EventEdge;
 import pagerank.entity.EventEdgeWrapper;
@@ -657,6 +658,141 @@ public class BackwardPropagate_pf {
         // weights.put(outEdge.id, outEdge.weight);
         // }
         // }
+    }
+
+    public void calculateWeights_AdaptiveFusion(String detection, String resDir) {
+        System.out.println("calculateWeights_AdaptiveFusion invoked for detection: " + detection);
+        alignPOITimeWithDetection(detection);
+
+        List<EventEdge> allEdges = new ArrayList<>(graph.edgeSet());
+        if (allEdges.isEmpty()) {
+            return;
+        }
+
+        Map<String, Integer> distanceToDetection = computeDistanceToDetection(detection);
+        double timeScale = estimateTimeScale(allEdges);
+        double amountScale = estimateAmountScale(allEdges);
+        double distanceScale = estimateDistanceScale(distanceToDetection);
+        double logDetectionSize = detectionSize > 0 ? Math.log1p(detectionSize) : 0.0;
+
+        final double alphaTime = 0.40;
+        final double alphaAmount = 0.25;
+        final double alphaStructure = 0.35;
+        final double epsilon = 1e-6;
+
+        Map<Long, JSONObject> diagnostics = new LinkedHashMap<>();
+
+        for (EntityNode sourceNode : graph.vertexSet()) {
+            List<EventEdge> outgoingEdges = new ArrayList<>(graph.outgoingEdgesOf(sourceNode));
+            if (outgoingEdges.isEmpty()) {
+                continue;
+            }
+
+            List<Double> siblingTimeDeltas = new ArrayList<>();
+            List<Double> siblingLogSizes = new ArrayList<>();
+            List<Double> siblingDistances = new ArrayList<>();
+            boolean hasPositiveSize = false;
+            for (EventEdge edge : outgoingEdges) {
+                siblingTimeDeltas.add(getTimeDelta(edge));
+                double logSize = Math.log1p(Math.max(0L, edge.getSize()));
+                siblingLogSizes.add(logSize);
+                if (edge.getSize() > 0) {
+                    hasPositiveSize = true;
+                }
+                siblingDistances.add((double) getDistanceForEdge(edge, distanceToDetection));
+            }
+
+            double siblingTimeSpread = normalizedSpread(siblingTimeDeltas, timeScale);
+            double siblingAmountSpread = normalizedSpread(siblingLogSizes, amountScale);
+            double siblingDistanceSpread = normalizedSpread(siblingDistances, distanceScale);
+
+            double timeConfidence = clamp(0.20 + 0.80 * siblingTimeSpread);
+            double amountConfidence = hasPositiveSize ? clamp(0.15 + 0.45 * siblingAmountSpread) : 0.05;
+            if (detectionSize > 0) {
+                amountConfidence = clamp(amountConfidence + 0.30);
+            }
+            double structureConfidence = clamp(0.25 + 0.35 * siblingDistanceSpread + 0.10 * Math.log1p(outgoingEdges.size()));
+
+            List<Double> fusedRawScores = new ArrayList<>();
+            Map<Long, Double> rawScoreByEdge = new HashMap<>();
+
+            for (EventEdge edge : outgoingEdges) {
+                double timeScore = computeTemporalScore(edge, timeScale);
+                double amountScore = computeAmountScore(edge, outgoingEdges, logDetectionSize, amountScale);
+                double structureScore = computeStructureScore(edge, distanceToDetection, distanceScale);
+
+                double effectiveTime = alphaTime * timeConfidence;
+                double effectiveAmount = alphaAmount * amountConfidence;
+                double effectiveStructure = alphaStructure * structureConfidence;
+                double effectiveTotal = effectiveTime + effectiveAmount + effectiveStructure;
+
+                double fusedRaw;
+                if (effectiveTotal <= 1e-12) {
+                    fusedRaw = (timeScore + amountScore + structureScore) / 3.0;
+                } else {
+                    double weightedLog = effectiveTime * Math.log(epsilon + timeScore)
+                            + effectiveAmount * Math.log(epsilon + amountScore)
+                            + effectiveStructure * Math.log(epsilon + structureScore);
+                    fusedRaw = Math.exp(weightedLog / effectiveTotal);
+                }
+
+                edge.timeWeight = timeScore;
+                edge.amountWeight = amountScore;
+                edge.structureWeight = structureScore;
+                timeWeights.put(edge.id, timeScore);
+                amountWeights.put(edge.id, amountScore);
+                structureWeights.put(edge.id, structureScore);
+                rawScoreByEdge.put(edge.id, fusedRaw);
+                fusedRawScores.add(fusedRaw);
+
+                JSONObject edgeDiagnostic = new JSONObject();
+                edgeDiagnostic.put("edgeId", edge.id);
+                edgeDiagnostic.put("source", edge.getSource().getSignature());
+                edgeDiagnostic.put("sink", edge.getSink().getSignature());
+                edgeDiagnostic.put("type", edge.getType());
+                edgeDiagnostic.put("event", edge.getEvent());
+                edgeDiagnostic.put("size", edge.getSize());
+                edgeDiagnostic.put("timeScore", timeScore);
+                edgeDiagnostic.put("amountScore", amountScore);
+                edgeDiagnostic.put("structureScore", structureScore);
+                edgeDiagnostic.put("timeConfidence", timeConfidence);
+                edgeDiagnostic.put("amountConfidence", amountConfidence);
+                edgeDiagnostic.put("structureConfidence", structureConfidence);
+                edgeDiagnostic.put("rawFusion", fusedRaw);
+                edgeDiagnostic.put("distanceToDetection", getDistanceForEdge(edge, distanceToDetection));
+                diagnostics.put(edge.id, edgeDiagnostic);
+            }
+
+            double adaptiveTemperature = computeAdaptiveTemperature(fusedRawScores,
+                    (alphaTime * timeConfidence + alphaAmount * amountConfidence + alphaStructure * structureConfidence)
+                            / (alphaTime + alphaAmount + alphaStructure));
+            double softmaxDenominator = 0.0;
+            Map<Long, Double> expScores = new HashMap<>();
+            for (EventEdge edge : outgoingEdges) {
+                double expValue = Math.exp(rawScoreByEdge.get(edge.id) / adaptiveTemperature);
+                expScores.put(edge.id, expValue);
+                softmaxDenominator += expValue;
+            }
+
+            if (softmaxDenominator <= 1e-12) {
+                softmaxDenominator = outgoingEdges.size();
+                for (EventEdge edge : outgoingEdges) {
+                    expScores.put(edge.id, 1.0);
+                }
+            }
+
+            for (EventEdge edge : outgoingEdges) {
+                double finalWeight = (expScores.get(edge.id) / softmaxDenominator) * 0.99;
+                edge.weight = finalWeight;
+                weights.put(edge.id, finalWeight);
+
+                JSONObject edgeDiagnostic = diagnostics.get(edge.id);
+                edgeDiagnostic.put("adaptiveTemperature", adaptiveTemperature);
+                edgeDiagnostic.put("finalWeight", finalWeight);
+            }
+        }
+
+        writeAdaptiveFusionDiagnostics(resDir, diagnostics.values());
     }
 
     private List<Double> computeFinalWeights(List<EventEdge> allEdges) {
@@ -1320,6 +1456,34 @@ public class BackwardPropagate_pf {
                 + 0.4 * (edge.structureWeight / structureTotal);
     }
 
+    private void alignPOITimeWithDetection(String detection) {
+        EntityNode detectionNode = graphIterator.getGraphVertex(detection);
+        if (detectionNode == null) {
+            return;
+        }
+
+        BigDecimal anchor = BigDecimal.ZERO;
+        Set<EventEdge> incomingEdges = graph.incomingEdgesOf(detectionNode);
+        for (EventEdge edge : incomingEdges) {
+            if (edge.getEndTime().compareTo(anchor) > 0) {
+                anchor = edge.getEndTime();
+            }
+        }
+
+        if (anchor.compareTo(BigDecimal.ZERO) == 0) {
+            Set<EventEdge> outgoingEdges = graph.outgoingEdgesOf(detectionNode);
+            for (EventEdge edge : outgoingEdges) {
+                if (edge.getEndTime().compareTo(anchor) > 0) {
+                    anchor = edge.getEndTime();
+                }
+            }
+        }
+
+        if (anchor.compareTo(BigDecimal.ZERO) > 0) {
+            POITime = anchor;
+        }
+    }
+
     public void setSeedSources(Set<String> set) {
         System.out.println("setSeedSource invoked!");
         seedSources = set;
@@ -1702,6 +1866,224 @@ public class BackwardPropagate_pf {
         // return Math.exp((-1)*Math.abs(edge.getSize()-detectionSize)/detectionSize);
 
         return 1.0 / (Math.abs(edge.getSize() - detectionSize) + 0.0001);
+    }
+
+    private Map<String, Integer> computeDistanceToDetection(String detection) {
+        Map<String, Integer> distanceMap = new HashMap<>();
+        EntityNode detectionNode = graphIterator.getGraphVertex(detection);
+        if (detectionNode == null) {
+            return distanceMap;
+        }
+
+        Queue<EntityNode> queue = new LinkedList<>();
+        queue.offer(detectionNode);
+        distanceMap.put(detectionNode.getSignature(), 0);
+
+        while (!queue.isEmpty()) {
+            EntityNode current = queue.poll();
+            int currentDistance = distanceMap.get(current.getSignature());
+            for (EventEdge incomingEdge : graph.incomingEdgesOf(current)) {
+                EntityNode previous = incomingEdge.getSource();
+                if (!distanceMap.containsKey(previous.getSignature())) {
+                    distanceMap.put(previous.getSignature(), currentDistance + 1);
+                    queue.offer(previous);
+                }
+            }
+        }
+
+        return distanceMap;
+    }
+
+    private double estimateTimeScale(List<EventEdge> edges) {
+        List<Double> deltas = new ArrayList<>();
+        for (EventEdge edge : edges) {
+            double delta = getTimeDelta(edge);
+            if (delta > 0) {
+                deltas.add(delta);
+            }
+        }
+        return estimateRobustScale(deltas, 1.0);
+    }
+
+    private double estimateAmountScale(List<EventEdge> edges) {
+        List<Double> logSizes = new ArrayList<>();
+        for (EventEdge edge : edges) {
+            if (edge.getSize() > 0) {
+                logSizes.add(Math.log1p(edge.getSize()));
+            }
+        }
+        return estimateRobustScale(logSizes, 1.0);
+    }
+
+    private double estimateDistanceScale(Map<String, Integer> distanceToDetection) {
+        if (distanceToDetection.isEmpty()) {
+            return 1.0;
+        }
+
+        List<Double> values = new ArrayList<>();
+        for (Integer distance : distanceToDetection.values()) {
+            values.add(distance.doubleValue());
+        }
+        return estimateRobustScale(values, 1.0);
+    }
+
+    private double estimateRobustScale(List<Double> values, double fallback) {
+        if (values == null || values.isEmpty()) {
+            return fallback;
+        }
+
+        List<Double> sortedValues = new ArrayList<>(values);
+        Collections.sort(sortedValues);
+        double median = percentile(sortedValues, 0.5);
+        List<Double> deviations = new ArrayList<>();
+        for (double value : sortedValues) {
+            deviations.add(Math.abs(value - median));
+        }
+        Collections.sort(deviations);
+        double mad = percentile(deviations, 0.5);
+        double scale = mad > 1e-9 ? mad * 1.4826 : Math.max(percentile(sortedValues, 0.75), fallback);
+        if (scale < 1e-9) {
+            scale = fallback;
+        }
+        return scale;
+    }
+
+    private double percentile(List<Double> sortedValues, double quantile) {
+        if (sortedValues.isEmpty()) {
+            return 0.0;
+        }
+        if (sortedValues.size() == 1) {
+            return sortedValues.get(0);
+        }
+
+        double position = quantile * (sortedValues.size() - 1);
+        int lowerIndex = (int) Math.floor(position);
+        int upperIndex = (int) Math.ceil(position);
+        if (lowerIndex == upperIndex) {
+            return sortedValues.get(lowerIndex);
+        }
+        double fraction = position - lowerIndex;
+        return sortedValues.get(lowerIndex) * (1.0 - fraction) + sortedValues.get(upperIndex) * fraction;
+    }
+
+    private double normalizedSpread(List<Double> values, double scale) {
+        if (values == null || values.size() <= 1) {
+            return 0.0;
+        }
+        double min = Double.POSITIVE_INFINITY;
+        double max = Double.NEGATIVE_INFINITY;
+        for (double value : values) {
+            min = Math.min(min, value);
+            max = Math.max(max, value);
+        }
+        return clamp((max - min) / (scale + 1e-9));
+    }
+
+    private double computeTemporalScore(EventEdge edge, double timeScale) {
+        return clamp(Math.exp(-getTimeDelta(edge) / (timeScale + 1e-9)));
+    }
+
+    private double computeAmountScore(EventEdge edge, List<EventEdge> siblingEdges, double logDetectionSize, double amountScale) {
+        double logSize = Math.log1p(Math.max(0L, edge.getSize()));
+        double siblingProminence = 1.0;
+        if (siblingEdges.size() > 1) {
+            double minLogSize = Double.POSITIVE_INFINITY;
+            double maxLogSize = Double.NEGATIVE_INFINITY;
+            for (EventEdge siblingEdge : siblingEdges) {
+                double siblingLogSize = Math.log1p(Math.max(0L, siblingEdge.getSize()));
+                minLogSize = Math.min(minLogSize, siblingLogSize);
+                maxLogSize = Math.max(maxLogSize, siblingLogSize);
+            }
+            if (Math.abs(maxLogSize - minLogSize) > 1e-9) {
+                siblingProminence = (logSize - minLogSize) / (maxLogSize - minLogSize);
+            }
+        }
+
+        if (detectionSize <= 0) {
+            return clamp(siblingProminence);
+        }
+
+        double detectionCloseness = Math.exp(-Math.abs(logSize - logDetectionSize) / (amountScale + 1e-9));
+        return clamp(0.70 * detectionCloseness + 0.30 * siblingProminence);
+    }
+
+    private double computeStructureScore(EventEdge edge, Map<String, Integer> distanceToDetection, double distanceScale) {
+        double sourceBranchPenalty = 1.0 / Math.sqrt(Math.max(1, graph.outDegreeOf(edge.getSource())));
+        double sinkExclusivity = 1.0 / Math.sqrt(Math.max(1, graph.inDegreeOf(edge.getSink())));
+        double poiDistanceScore = Math.exp(-getDistanceForEdge(edge, distanceToDetection) / (distanceScale + 1e-9));
+        double typePrior = getTypePrior(edge);
+        return clamp(0.25 * sourceBranchPenalty + 0.20 * sinkExclusivity + 0.35 * poiDistanceScore + 0.20 * typePrior);
+    }
+
+    private int getDistanceForEdge(EventEdge edge, Map<String, Integer> distanceToDetection) {
+        Integer sinkDistance = distanceToDetection.get(edge.getSink().getSignature());
+        if (sinkDistance != null) {
+            return sinkDistance;
+        }
+        Integer sourceDistance = distanceToDetection.get(edge.getSource().getSignature());
+        if (sourceDistance != null) {
+            return sourceDistance + 1;
+        }
+        return distanceToDetection.isEmpty() ? 1 : distanceToDetection.size() + 1;
+    }
+
+    private double getTypePrior(EventEdge edge) {
+        String type = edge.getType();
+        if (type == null) {
+            return 0.70;
+        }
+        switch (type) {
+            case "PtoP":
+                return 0.95;
+            case "PtoN":
+            case "NtoP":
+                return 0.85;
+            case "PtoF":
+            case "FtoP":
+                return 0.75;
+            default:
+                return 0.70;
+        }
+    }
+
+    private double computeAdaptiveTemperature(List<Double> rawScores, double meanConfidence) {
+        if (rawScores.isEmpty()) {
+            return 1.0;
+        }
+
+        DescriptiveStatistics stats = new DescriptiveStatistics();
+        for (double rawScore : rawScores) {
+            stats.addValue(rawScore);
+        }
+
+        double normalizedStd = stats.getStandardDeviation() / (Math.abs(stats.getMean()) + 1e-9);
+        double temperature = 1.10 - 0.45 * clamp(meanConfidence) - 0.20 * clamp(normalizedStd);
+        return Math.max(0.35, Math.min(1.20, temperature));
+    }
+
+    private double getTimeDelta(EventEdge edge) {
+        return Math.abs(edge.getEndTime().doubleValue() - POITime.doubleValue());
+    }
+
+    private double clamp(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            return 0.0;
+        }
+        return Math.max(0.0, Math.min(1.0, value));
+    }
+
+    private void writeAdaptiveFusionDiagnostics(String resDir, Collection<JSONObject> diagnostics) {
+        try {
+            File file = new File(resDir + "/adaptivefusion_weights.json");
+            FileWriter fileWriter = new FileWriter(file);
+            PrintWriter printWriter = new PrintWriter(fileWriter);
+            JSONArray jsonArray = new JSONArray();
+            jsonArray.addAll(diagnostics);
+            printWriter.write(jsonArray.toJSONString());
+            printWriter.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     public void printWeights() throws Exception {
