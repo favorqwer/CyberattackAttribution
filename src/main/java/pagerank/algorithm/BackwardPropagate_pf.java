@@ -2620,8 +2620,7 @@ public class BackwardPropagate_pf {
                         comp.stream().mapToDouble(n -> n.reputation).max().orElse(0.0)))
                 .orElse(components.get(0));
 
-        System.out.println("[连通性检查] 发现 " + components.size() + " 个弱连通分量，主分量节点数: "
-                + mainComponent.size() + "，正在修复...");
+        System.out.println("[Connectivity Check] Found " + components.size() + " weak connected component(s), main component has " + mainComponent.size() + " nodes, repairing...");
 
         Set<String> mainSigs = new HashSet<>();
         for (EntityNode n : mainComponent) mainSigs.add(n.getSignature());
@@ -2680,10 +2679,10 @@ public class BackwardPropagate_pf {
                     mainSigs.add(e.getSink().getSignature());
                     cur = parent.get(cur);
                 }
-                System.out.println("[连通性修复] 节点 " + isolated.getSignature() + " 已通过路径补全与主分量连通");
+                System.out.println("[Connectivity Repair] Node " + isolated.getSignature() + " connected to main component via path completion");
             } else {
-                System.out.println("[连通性修复] 警告：节点 " + isolated.getSignature()
-                        + " 在反向切片中无法前向到达主分量（可能是合法孤岛），保留原样");
+                System.out.println("[Connectivity Repair] Warning: Node " + isolated.getSignature()
+                        + " cannot forward-reach main component in backslice (may be legitimate island), keeping as is");
             }
         }
         return filtered;
