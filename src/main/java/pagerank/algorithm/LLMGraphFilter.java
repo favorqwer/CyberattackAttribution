@@ -149,6 +149,14 @@ public class LLMGraphFilter {
         Set<String> llmEntryNodes = extractEntryNodesFromResponse(llmResponse);
         System.out.println("LLM identified " + llmEntryNodes.size() + " entry nodes.");
 
+        // 记录解析到的 entry nodes 到 llm 日志（便于后续核对）
+        try (java.io.FileWriter fw = new java.io.FileWriter(logFilePath, true)) {
+            fw.write("\n================ PARSED ENTRY_NODES ================\n");
+            fw.write(llmEntryNodes.toString() + "\n");
+        } catch (Exception e) {
+            System.err.println("Failed to append parsed ENTRY_NODES to llm log: " + e.getMessage());
+        }
+
         // 8. 重建图
         DirectedPseudograph<EntityNode, EventEdge> filteredGraph = buildFilteredGraph(originalGraph, keptEdgeIds);
 
@@ -452,15 +460,17 @@ public class LLMGraphFilter {
         if (response == null || response.isEmpty()) {
             return edgeIds;
         }
+        // 先清洗可能的 Markdown/列表前缀，再解析
+        String cleanedResponse = cleanLLMText(response);
 
         // 优先匹配 EDGES: [...] 格式（使用预编译常量）
-        Matcher edgesMatcher = EDGES_PATTERN.matcher(response);
+        Matcher edgesMatcher = EDGES_PATTERN.matcher(cleanedResponse);
         String matchContent = null;
         if (edgesMatcher.find()) {
             matchContent = edgesMatcher.group(1);
         } else {
             // 回退：取最后一个方括号中的内容（排除 ENTRY_NODES 标记的部分，使用预编译常量）
-            String responseWithoutEntryNodes = ENTRY_NODES_REMOVE_PATTERN.matcher(response).replaceAll("");
+            String responseWithoutEntryNodes = ENTRY_NODES_REMOVE_PATTERN.matcher(cleanedResponse).replaceAll("");
             Matcher matcher = BRACKET_CONTENT_PATTERN.matcher(responseWithoutEntryNodes);
             while (matcher.find()) {
                 matchContent = matcher.group(1);
@@ -491,8 +501,10 @@ public class LLMGraphFilter {
         if (response == null || response.isEmpty()) {
             return entryNodes;
         }
+        // 先清洗可能的 Markdown/列表前缀，再解析
+        String cleanedResponse = cleanLLMText(response);
 
-        Matcher entryMatcher = ENTRY_NODES_PATTERN.matcher(response);
+        Matcher entryMatcher = ENTRY_NODES_PATTERN.matcher(cleanedResponse);
         if (entryMatcher.find()) {
             String matchContent = entryMatcher.group(1);
             String[] nodes = matchContent.split(",");
@@ -506,6 +518,25 @@ public class LLMGraphFilter {
             System.err.println("Warning: Could not find ENTRY_NODES in LLM response. No entry nodes extracted.");
         }
         return entryNodes;
+    }
+
+    /**
+     * 对 LLM 输出做简单预清洗，去掉 Markdown 粗体/代码标记、列表前缀、不可见字符等，降低格式差异带来的解析失败概率。
+     */
+    private String cleanLLMText(String s) {
+        if (s == null) return null;
+        // 去掉粗体/斜体/反引号等 Markdown 装饰
+        String t = s;
+        t = t.replace("**", "");
+        t = t.replace("*", "");
+        t = t.replace("`", "");
+        // 去掉行首的列表项符号（- 或 *）
+        t = t.replaceAll("(?m)^\\s*[-*+]\\s+", "");
+        // 去掉零宽/格式类的不可见字符（使用 Unicode 类，避免在源文件中使用直接的 unicode 转义）
+        t = t.replaceAll("\\p{Cf}+", "");
+        // 规范化连续空白
+        t = t.replaceAll("\\s+", " ").trim();
+        return t;
     }
 
     /**
