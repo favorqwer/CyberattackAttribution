@@ -1,11 +1,10 @@
 package pagerank.main;
-import pagerank.entity.Event;
+
 import pagerank.entity.FtoPEvent;
 import pagerank.entity.NtoPEvent;
 import pagerank.entity.PtoFEvent;
 import pagerank.entity.PtoNEvent;
 import pagerank.entity.PtoPEvent;
-import pagerank.algorithm.GetGraph;
 
 import logparsers.SysdigOutputParser;
 import logparsers.SysdigOutputParserNoRegex;
@@ -172,31 +171,4 @@ public class ProcessTheOriginalParserOutput {
 //            }
 //        }
     }
-
-    public static  void main(String[] args) throws Exception{
-        String[] localIP={"10.0.2.15"};
-        ProcessTheOriginalParserOutput test = new ProcessTheOriginalParserOutput("pipInstall.txt",localIP);
-
-        test.reverseSourceAndSink();
-//        Map<String, PtoNEvent> pnmap = test.getPnmap();
-//        System.out.println("-----------------------------");
-//        for(String key:pnmap.keySet()){
-//            System.out.println(pnmap.get(key).getUniqID());
-//            System.out.println(pnmap.get(key).getEvent());
-//        }
-        System.out.println("--------------------------");
-        Map<String, PtoNEvent> map = test.getProcessNetworkMap();
-        System.out.println(map.size());
-        for(String key:map.keySet()){
-            System.out.println(map.get(key).getSink().getSrcAddress().equals(localIP[0]));
-            System.out.println("Find the local ip");
-        }
-        Map<String, NtoPEvent> map2 = test.getNetworkProcessMap();
-        for(String key:map2.keySet()){
-            System.out.println(map2.get(key).getSource().getSrcAddress().equals(localIP[0]));
-            System.out.println("Find the local ip");
-        }
-    }
-
-
 }

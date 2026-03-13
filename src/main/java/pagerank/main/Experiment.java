@@ -1,8 +1,6 @@
 package pagerank.main;
-import pagerank.config.MetaConfig;
 
-import org.apache.commons.math3.analysis.function.Exp;
-import org.jgrapht.graph.DirectedPseudograph;
+import pagerank.config.MetaConfig;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -73,11 +71,6 @@ public class Experiment {
     public String[] importantIPStarts;
     // 预定义入口点
     public String[] entries;
-    // DOT文件路径
-    public String pathToDot;
-    // DOT文件对象
-    File dotFile;
-
     /**
      * 构造函数 - 从日志文件和配置文件创建实验
      * 
@@ -107,11 +100,6 @@ public class Experiment {
         config = new Properties();
         config.load(fi);
         digestConfig();
-    }
-
-    public void setPathToDot(String s) {
-        pathToDot = s;
-        dotFile = new File(pathToDot);
     }
 
     /**
@@ -189,18 +177,15 @@ public class Experiment {
     }
 
     public List<String> getHighRP(){
-        List<String> res = Arrays.asList(highRP);
-        return res;
+        return Arrays.asList(highRP);
     }
 
     public List<String> getLowRP(){
-        List<String> res = Arrays.asList(lowRP);
-        return res;
+        return Arrays.asList(lowRP);
     }
 
     public String[] getCriticalEdges(){
-        String[] copyOfCriticalEdges = Arrays.copyOf(criticalEdges, criticalEdges.length);
-        return copyOfCriticalEdges;
+        return Arrays.copyOf(criticalEdges, criticalEdges.length);
     }
 
     public String[] getEntries(){

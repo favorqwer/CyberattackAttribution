@@ -1,6 +1,5 @@
 package pagerank.main;
 import pagerank.entity.EntityNode;
-import pagerank.entity.Process;
 import pagerank.entity.EventEdge;
 import pagerank.algorithm.BackwardPropagate_pf;
 import pagerank.algorithm.IterateGraph;
@@ -16,7 +15,6 @@ import org.json.simple.JSONObject;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.sql.Timestamp;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -54,9 +52,6 @@ import java.util.stream.Collectors;
 public class ProcessOneLogCMD_19 {
     // 统计文件输出流
     static OutputStream os = null;
-    // 前向分析时选择的Top N入口点数量
-    public static int topStarts = 3; // parameter for choosing top N starts for forward analysis
-
     /**
      * process_backward - 处理单条日志的反向溯源分析（包含图构建）
      * 
@@ -84,7 +79,6 @@ public class ProcessOneLogCMD_19 {
             String logfile, String[] IP, String detection, String[] highRP, String[] midRP, String[] lowRP,
             String filename, double detectionSize, Set<String> seedSources, String[] criticalEdges, String mode,
             JSONObject jsonLog) {
-        OutputStream weightfile = null;
         try {
             // 打开统计文件
             os = new FileOutputStream(resultDir + filename + suffix + "_stats");
@@ -126,12 +120,6 @@ public class ProcessOneLogCMD_19 {
 
         } catch (Exception e) {
             e.printStackTrace();
-        } finally {
-            try {
-                // weightfile.close();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
         }
     }
 
@@ -140,7 +128,6 @@ public class ProcessOneLogCMD_19 {
             String detection, String[] highRP, String[] midRP, String[] lowRP,
             String filename, double detectionSize, Set<String> seedSources, String[] criticalEdges, String mode,
             JSONObject jsonlog, String[] importantEntries) {
-        OutputStream weightfile = null;
         try {
             os = new FileOutputStream(resultDir + filename + suffix + "_stats");
             long start = System.currentTimeMillis();
@@ -344,7 +331,6 @@ public class ProcessOneLogCMD_19 {
             String[] highRP, String[] midRP, String[] lowRP, String filename, double detectionSize,
             Set<String> seedSources, String[] criticalEdges, String mode, JSONObject jsonlog,
             String[] importantEntries) {
-        OutputStream weightfile = null;
         try {
             // 1. 打开统计文件（用于记录每一步的节点/边数量、耗时等）
             os = new FileOutputStream(resultDir + filename + suffix + "_stats");
@@ -525,12 +511,6 @@ public class ProcessOneLogCMD_19 {
 
     public static double getTimeCost(long start, long end) {
         return (end - start) * 1.0 / 1000.0;
-    }
-
-    public static Timestamp getTimeStamp() {
-        Calendar calendar = Calendar.getInstance();
-        Timestamp currentTimestamp = new java.sql.Timestamp(calendar.getTime().getTime());
-        return currentTimestamp;
     }
 
     public static void putToJsonLog(JSONObject jsonLog, String key, String value) {

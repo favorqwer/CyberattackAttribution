@@ -1,4 +1,5 @@
 package pagerank.main;
+
 import pagerank.entity.EntityNode;
 import pagerank.entity.EventEdge;
 import pagerank.algorithm.GetGraph;
@@ -11,11 +12,7 @@ import org.json.simple.JSONObject;
 
 import java.io.*;
 import java.sql.Timestamp;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.logging.*;
-import java.util.logging.Formatter;
 
 /**
  * ExperimentRunnerCmd - 实验运行命令行入口类
@@ -42,7 +39,6 @@ public class ExperimentRunnerCmd {
     // 权重计算模式：clusterall, nonml, clusterlocal, fanout等
     // 参见ProcessOneLogCMD_19中的mode参数说明
     public static String mode;
-    public static String do_split;
     // 从日志文件构建的依赖图（整个项目只构建一次，提高效率）
     DirectedPseudograph<EntityNode, EventEdge> graphFromLog;
     // 日志文件所在目录路径
@@ -187,10 +183,8 @@ public class ExperimentRunnerCmd {
         File[] logs = getLogs(PathToLogs);
         File log = logs[0];
         
-        // 实验列表（虽然声明了但主要使用experiments_backward）
-        List<Experiment> experiments = new ArrayList<>();
         // 反向溯源实验列表
-        List<Experiment> experiments_backward = new ArrayList<>();
+        List<Experiment> experimentsBackward = new ArrayList<>();
         PrintStream logStream;
 
         try {
@@ -216,12 +210,12 @@ public class ExperimentRunnerCmd {
                 String propertyName = propertyFile.getName();
                 // 以"backward"结尾的配置文件表示反向溯源分析
                 if (propertyName.indexOf("backward") != -1) {
-                    experiments_backward.add(new Experiment(log, propertyFile));// 创建反向实验
+                    experimentsBackward.add(new Experiment(log, propertyFile));// 创建反向实验
                 }
             }
 
             // 6. 依次运行每个反向实验
-            for (Experiment e : experiments_backward) {
+            for (Experiment e : experimentsBackward) {
                 // 为每个实验创建独立的输出目录
                 // 目录命名格式：<配置文件父目录名>-<配置文件名(无后缀)>
                 File oneRes = new File(resDir + "/" + e.configFile.getParentFile().getName() + "-" + e.configFile.getName().split("\\.")[0]);
@@ -231,7 +225,6 @@ public class ExperimentRunnerCmd {
                 // 创建日志文件，记录实验过程
                 File logFile = new File(oneRes.getAbsolutePath() + "/" + e.log.getName().split("\\.")[0] + ".log");
                 logStream = new PrintStream(new FileOutputStream(logFile, true));
-               // logging(e, logFile);
                 // 同时输出到控制台和日志文件
                 LogStream ls = new LogStream(System.out, logStream);
                 LogStream lse = new LogStream(System.err, logStream);
@@ -262,8 +255,6 @@ public class ExperimentRunnerCmd {
                 // - jsonLog: JSON日志对象
                 // - e.getEntries(): 预定义的重要入口点
                 ProcessOneLogCMD_19.run_exp_backward(graphFromLog, oneRes.getAbsolutePath() + "/", "", e.threshold, e.trackOrigin, e.log.getAbsolutePath(), MetaConfig.localIP, e.POI, e.highRP, e.midRP, e.lowRP, e.log.getName().split("\\.")[0], e.detectionSize, e.getInitial(), e.criticalEdges, mode, jsonLog, e.getEntries());
-
-//                ProcessOneLogCMD_19.process_backward(oneRes.getAbsolutePath() + "/", "", e.threshold, e.trackOrigin, e.log.getAbsolutePath(), MetaConfig.localIP, e.POI, e.highRP, e.midRP, e.lowRP, e.log.getName().split("\\.")[0], e.detectionSize, e.getInitial(), e.criticalEdges, "nonml");
                 logStream.close();
 
                 // 8. 保存JSON格式的实验结果
@@ -297,39 +288,6 @@ public class ExperimentRunnerCmd {
         return configuredMode.trim();
     }
 
-    private void logging(Experiment e, File logFile) throws IOException {
-        Logger logger = Logger.getLogger(e.configFile.getName());
-        FileHandler fileHandler = new FileHandler(logFile.getAbsolutePath());
-        fileHandler.setLevel(Level.ALL);
-        fileHandler.setFormatter(new LogFormatter());
-        logger.addHandler(fileHandler);
-
-        logger.info("#############Configurations#############");
-        logger.info("Log File: " + e.log.getAbsolutePath());
-        logger.info("Config File: " + e.configFile.getAbsolutePath());
-        logger.info("POI: " + e.POI);
-        logger.info("Local IP: " + formatArray(MetaConfig.localIP));
-        logger.info("High RP: " + formatArray(e.highRP));
-        logger.info("Low RP: " + formatArray(e.lowRP));
-        logger.info("Threshold: " + String.valueOf(e.threshold));
-        logger.info("Track Origin: " + String.valueOf(e.trackOrigin));
-        logger.info("Detection size: " + String.valueOf(e.detectionSize));
-        logger.info("Seeds: " + formatArray(e.getInitial().toArray(new String[e.getInitial().size()])));
-        logger.info("##############Sysdig Parser#############");
-        logger.info("P2P: " + formatArray(MetaConfig.ptopSystemCall));
-        logger.info("P2F: " + formatArray(MetaConfig.ptofSystemCall));
-        logger.info("F2P: " + formatArray(MetaConfig.ftopSystemCall));
-        logger.info("P2N: " + formatArray(MetaConfig.ptonSystemCall));
-        logger.info("N2P: " + formatArray(MetaConfig.ntopSystemCall));
-        logger.info("########################################");
-        logger.info("Mid RP: " + formatArray(e.midRP));
-        logger.info("########################################");
-    }
-
-    private String formatArray(String[] array) {
-        return String.join(",", array);
-    }
-
     private File makeResDir(String pathToRes) {
         File resDir = new File(PathToRes);
         if (!resDir.exists() || !resDir.isDirectory())
@@ -343,19 +301,6 @@ public class ExperimentRunnerCmd {
         if (!logDir.exists() || !logDir.isDirectory())
             throw new FileNotFoundException("Invalid directory: " + logDir);
         return logDir.listFiles(logNameFilter);
-    }
-
-    public class LogFormatter extends Formatter {
-        // Create a DateFormat to format the logger timestamp.
-        private DateFormat df = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss.SSS");
-
-        public String format(LogRecord record) {
-            StringBuilder builder = new StringBuilder();
-            builder.append(df.format(new Date(record.getMillis()))).append(" - ");
-            builder.append(formatMessage(record));
-            builder.append("\n");
-            return builder.toString();
-        }
     }
 
     public class LogStream extends PrintStream {

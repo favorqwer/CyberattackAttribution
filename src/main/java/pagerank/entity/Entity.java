@@ -68,13 +68,5 @@ public class Entity implements Serializable {
     public long getUniqID(){
         return uniqID;
     }
-    /*test*/
-    public static void main(String[] args){
-        Entity test = new Entity(2.0,0,15,"1152654","493685052",5);
-        System.out.println("HopCount: "+test.getHopCount());
-        System.out.println("id: "+test.getID());
-        System.out.println("repuattion: "+test.getReputation());
-        System.out.println("timestap: "+ test.getTimeStamp());
-    }
 }
 

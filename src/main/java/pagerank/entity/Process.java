@@ -76,19 +76,4 @@ public class Process extends Entity {
         result = 31 * result + (name != null ? name.hashCode() : 0);
         return result;
     }
-
-    /* test */
-    public static void main(String[] args){
-        String uid = "fang1";
-        String groupId = "fang2";
-        String location = "fang3";
-        long id = Long.parseLong("1234");
-        Process test = new Process(2.0,0,0,"1123",uid,groupId,location,"1123","234","java",12);
-
-        //Process test2 = new Process(14,3,5341,uid,location);
-        System.out.println(test.getPidAndName());
-        //System.out.println(test2.getUid());
-        //System.out.println(test.getGroupID());
-        //System.out.println(test2.getLocation());
-    }
 }

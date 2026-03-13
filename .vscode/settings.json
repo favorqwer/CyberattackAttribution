@@ -5,5 +5,6 @@
         "mvn -q -DskipTests package": true,
         "c:": true,
         "&": true
-    }
+    },
+    "chatgpt.commentCodeLensEnabled": false
 }

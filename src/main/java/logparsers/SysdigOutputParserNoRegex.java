@@ -1,16 +1,12 @@
 package logparsers;
 
-import logparsers.exceptions.EventStartUnseenException;
 import logparsers.exceptions.UnknownEventException;
 import logparsers.systemcalls.Fingerprint;
 import logparsers.systemcalls.SystemCall;
 import logparsers.systemcalls.SystemCallFactory;
+import pagerank.config.MetaConfig;
 import pagerank.entity.Process;
 import pagerank.entity.*;
-import pagerank.provider.*;
-import pagerank.algorithm.*;
-import pagerank.main.*;
-import pagerank.config.*;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -21,18 +17,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class SysdigOutputParserNoRegex implements SysdigOutputParser{
-    public static void main(String[] args){
-        try{
-            SysdigOutputParserNoRegex parser = new SysdigOutputParserNoRegex("data/attack_log/cmd-inject.log",MetaConfig.localIP);
-            parser.getEntities();
-
-        }catch (Exception e){
-            System.out.println(e.getMessage());
-        }
-    }
-
     private File log;
-    private Set<String> localIP;
     private long UID;
     private double repu = 0.0;
     private int hops = 0;
@@ -76,8 +61,6 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
 
         log = new File(pathToLog);
         UID = 0;// 实体唯一ID计数器
-        this.localIP = new HashSet<>();
-        this.localIP.addAll(Arrays.asList(localIP));
 
         registerSystemCalls();// 注册系统调用处理器
     }
