@@ -37,7 +37,6 @@ import java.util.stream.Collectors;
  * - nonml: 手动权重（时间0.5+结构0.5，或时间0.1+结构0.4+数据量0.5）
  * - clusterall: 全局聚类 + FDA降维
  * - clusterlocal: 局部聚类 + FDA降维（论文核心方法）
- * - adaptivefusion: 置信度加权的时间/数据量/结构自适应几何融合
  * - nonoutlier: 排除离群点后聚类
  * - localtime: 仅时间权重
  * - localamount: 仅数据量权重
@@ -193,9 +192,6 @@ public class ProcessOneLogCMD_19 {
                     break;
                 case "clusterlocal":
                     infer.calculateWeights_ML_dec(true, 3, resultDir);
-                    break;
-                case "adaptivefusion":
-                    infer.calculateWeights_AdaptiveFusion(detection, resultDir);
                     break;
                 case "localtime":
                     infer.calculateWeights_Individual(true, "timeWeight", resultDir);
@@ -415,9 +411,6 @@ public class ProcessOneLogCMD_19 {
                     break;
                 case "clusterlocal":// 局部聚类方法
                     infer.calculateWeights_ML_dec(true, 3, resultDir);
-                    break;
-                case "adaptivefusion":
-                    infer.calculateWeights_AdaptiveFusion(detection, resultDir);
                     break;
                 case "localtime":
                     infer.calculateWeights_Individual(true, "timeWeight", resultDir);

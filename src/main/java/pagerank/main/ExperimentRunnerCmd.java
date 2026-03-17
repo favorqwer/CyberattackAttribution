@@ -282,7 +282,7 @@ public class ExperimentRunnerCmd {
             configuredMode = System.getenv("DEPIMPACT_MODE");
         }
         if (configuredMode == null || configuredMode.trim().isEmpty()) {
-            configuredMode = "adaptivefusion";
+            configuredMode = "clusterall";
         }
         System.out.println("Weight mode: " + configuredMode);
         return configuredMode.trim();

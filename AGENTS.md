@@ -56,11 +56,10 @@ java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar \
 
 ### 权重计算模式 (mode参数)
 
-通过 `System.getProperty("depimpact.mode")` 或 `System.getenv("DEPIMPACT_MODE")` 设置，默认 `adaptivefusion`：
+通过 `System.getProperty("depimpact.mode")` 或 `System.getenv("DEPIMPACT_MODE")` 设置，默认 `clusterall`：
 
 | 模式 | 说明 |
 |------|------|
-| `adaptivefusion` | 自适应融合（默认） |
 | `nonml` | 手动权重分配 |
 | `clusterall` | 全局聚类 + FDA降维 |
 | `clusterlocal` | 局部聚类 + FDA降维（论文核心） |
