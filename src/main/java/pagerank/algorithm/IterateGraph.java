@@ -718,9 +718,17 @@ public class IterateGraph {
 
     // Todo: add more libraries to Metaconfig
     public static List<String> getCandidateEntryPoint(DirectedPseudograph<EntityNode, EventEdge> graph) {
+        return getCandidateEntryPoint(graph, null);
+    }
+
+    public static List<String> getCandidateEntryPoint(DirectedPseudograph<EntityNode, EventEdge> graph,
+            String detectionSignature) {
         List<String> res = new LinkedList<>();
         Set<String> libraries = new HashSet<String>(Arrays.asList(MetaConfig.midRP));
         for (EntityNode v : graph.vertexSet()) {
+            if (detectionSignature != null && detectionSignature.equals(v.getSignature())) {
+                continue;
+            }
             if (v.isNetworkNode()) {
                 res.add(v.getSignature());
             } else if (v.isProcessNode()) {

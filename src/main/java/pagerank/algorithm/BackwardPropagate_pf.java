@@ -1904,8 +1904,12 @@ public class BackwardPropagate_pf {
     // TODO: 9/19/2019 This method should be based on the reputation ranking, for
     // now we need manual inputs.
     public List<List<String>> getForwardStarts() {
+        return getForwardStarts(null);
+    }
+
+    public List<List<String>> getForwardStarts(String detectionSignature) {
         List<List<String>> res = new LinkedList<>();
-        List<String> candidates = IterateGraph.getCandidateEntryPoint(graph);
+        List<String> candidates = IterateGraph.getCandidateEntryPoint(graph, detectionSignature);
         Map<String, Double> graphReputation = IterateGraph.getNodeReputation(graph);
         Map<String, EntityNode> signatureToNode = IterateGraph.getSignatureNodeMap(graph);
         List<String> processCandidate = new LinkedList<>();

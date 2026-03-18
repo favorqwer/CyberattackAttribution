@@ -244,7 +244,7 @@ public class ProcessOneLogCMD_19 {
                 os.write(timeCostInfo.getBytes());
                 ProcessOneLogCMD_19.putToJsonLog(jsonlog, "PropagationTimeCost", String.valueOf(timeCost));
 
-                List<List<String>> forwardStarts = infer.getForwardStarts();
+                List<List<String>> forwardStarts = infer.getForwardStarts(detection);
                 List<String> highlightedEntries = collectHighlightedEntries(forwardStarts, importantEntries, 3);
                 IterateGraph highlightedWeightGraph = new IterateGraph(infer.graph, detection, highlightedEntries);
                 highlightedWeightGraph.exportGraph(resultDir + "Weight_" + filename + suffix);
@@ -270,7 +270,7 @@ public class ProcessOneLogCMD_19 {
                             suffix, String.valueOf(i), infer, outputFilterGraph);
                 }
 
-                List<String> entryPoints = IterateGraph.getCandidateEntryPoint(infer.graph);
+                List<String> entryPoints = IterateGraph.getCandidateEntryPoint(infer.graph, detection);
                 JSONObject entryJson = new JSONObject();
                 entryJson.put("EntryPointsNumber", entryPoints.size());
                 ProcessOneLogCMD_19.putToJsonLog(jsonlog, "EntryPointsNumber", String.valueOf(entryPoints.size()));
@@ -472,7 +472,7 @@ public class ProcessOneLogCMD_19 {
                 ProcessOneLogCMD_19.putToJsonLog(jsonlog, "PropagationTimeCost", String.valueOf(timeCost));
 
                 // 6. 找出可能的攻击入口点（Entry Points）并生成最终溯源结果
-                List<List<String>> forwardStarts = infer.getForwardStarts();
+                List<List<String>> forwardStarts = infer.getForwardStarts(detection);
                 List<String> highlightedEntries = collectHighlightedEntries(forwardStarts, importantEntries, 3);
                 IterateGraph highlightedWeightGraph = new IterateGraph(infer.graph, detection, highlightedEntries);
                 highlightedWeightGraph.exportGraph(resultDir + "Weight_" + filename + suffix);
@@ -484,7 +484,7 @@ public class ProcessOneLogCMD_19 {
                 ProcessOneLogCMD_19.filter_graph_by_forward_category(forwardStarts, orignal, "results", resultDir,
                         filename, suffix, "1", 3, infer, outputFilterGraph, detection);
 
-                List<String> entryPoints = IterateGraph.getCandidateEntryPoint(infer.graph);
+                List<String> entryPoints = IterateGraph.getCandidateEntryPoint(infer.graph, detection);
                 JSONObject entryJson = new JSONObject();
                 entryJson.put("EntryPointsNumber", entryPoints.size());
                 ProcessOneLogCMD_19.putToJsonLog(jsonlog, "EntryPointsNumber", String.valueOf(entryPoints.size()));
