@@ -155,7 +155,8 @@ public class ProcessOneLogCMD_19 {
                     String.valueOf(CPR.afterMerge.vertexSet().size()));
             ProcessOneLogCMD_19.putToJsonLog(jsonlog, "CPREdgeNumber", String.valueOf(CPR.afterMerge.edgeSet().size()));
             ProcessOneLogCMD_19.putToJsonLog(jsonlog, "CPRTimeCost", String.valueOf(timeCost));
-            IterateGraph out = new IterateGraph(CPR.afterMerge);
+            IterateGraph out = new IterateGraph(CPR.afterMerge, detection,
+                    collectHighlightedEntries(Collections.emptyList(), importantEntries, 0));
             out.exportGraph(resultDir + "AfterCPR_" + filename + suffix);
 
             // 当detectionSize未指定时，从BackTrack后的图（CPR压缩前）中提取
@@ -243,8 +244,10 @@ public class ProcessOneLogCMD_19 {
                 os.write(timeCostInfo.getBytes());
                 ProcessOneLogCMD_19.putToJsonLog(jsonlog, "PropagationTimeCost", String.valueOf(timeCost));
 
-                infer.exportGraph(resultDir + "Weight_" + filename + suffix);
                 List<List<String>> forwardStarts = infer.getForwardStarts();
+                List<String> highlightedEntries = collectHighlightedEntries(forwardStarts, importantEntries, 3);
+                IterateGraph highlightedWeightGraph = new IterateGraph(infer.graph, detection, highlightedEntries);
+                highlightedWeightGraph.exportGraph(resultDir + "Weight_" + filename + suffix);
                 List<String> nodesignatures = infer.graph.vertexSet().stream().map(v -> v.getSignature())
                         .collect(Collectors.toList());
                 List<String> randomStarts = IterateGraph.getRandomStarts(nodesignatures, 3); // not based on category
@@ -467,10 +470,12 @@ public class ProcessOneLogCMD_19 {
                 System.out.println(timeCostInfo);
                 os.write(timeCostInfo.getBytes());
                 ProcessOneLogCMD_19.putToJsonLog(jsonlog, "PropagationTimeCost", String.valueOf(timeCost));
-                infer.exportGraph(resultDir + "Weight_" + filename + suffix);
 
                 // 6. 找出可能的攻击入口点（Entry Points）并生成最终溯源结果
                 List<List<String>> forwardStarts = infer.getForwardStarts();
+                List<String> highlightedEntries = collectHighlightedEntries(forwardStarts, importantEntries, 3);
+                IterateGraph highlightedWeightGraph = new IterateGraph(infer.graph, detection, highlightedEntries);
+                highlightedWeightGraph.exportGraph(resultDir + "Weight_" + filename + suffix);
                 Map<String, Double> nodeReputation = IterateGraph.getNodeReputation(infer.graph);
                 IterateGraph.outputTopStarts(resultDir, forwardStarts, nodeReputation);
                 boolean outputFilterGraph = true;
@@ -500,6 +505,36 @@ public class ProcessOneLogCMD_19 {
                 e.printStackTrace();
             }
         }
+    }
+
+    private static List<String> collectHighlightedEntries(List<List<String>> starts, String[] configuredEntries,
+            int perCategoryLimit) {
+        LinkedHashSet<String> highlightedEntries = new LinkedHashSet<>();
+
+        if (configuredEntries != null) {
+            for (String entry : configuredEntries) {
+                if (entry != null && !entry.trim().isEmpty()) {
+                    highlightedEntries.add(entry.trim());
+                }
+            }
+        }
+
+        if (starts != null) {
+            for (List<String> category : starts) {
+                if (category == null) {
+                    continue;
+                }
+                int limit = perCategoryLimit > 0 ? Math.min(perCategoryLimit, category.size()) : category.size();
+                for (int i = 0; i < limit; i++) {
+                    String entry = category.get(i);
+                    if (entry != null && !entry.trim().isEmpty()) {
+                        highlightedEntries.add(entry.trim());
+                    }
+                }
+            }
+        }
+
+        return new ArrayList<>(highlightedEntries);
     }
 
     public static double getTimeCost(long start, long end) {
@@ -558,7 +593,7 @@ public class ProcessOneLogCMD_19 {
                 DirectedPseudograph<EntityNode, EventEdge> allInOneGraph = infer
                         .combineBackwardAndForwardForMultipleStarts(allSelectedStarts, orignal);
 
-                IterateGraph mergedOut = new IterateGraph(allInOneGraph);
+                IterateGraph mergedOut = new IterateGraph(allInOneGraph, poiEvent, allSelectedStarts);
                 String mergedPath = resFolderForFilter.getAbsolutePath() + "/" +
                         "complete_provenance_graph_" + filename + "_" + method + suffix;
 
@@ -582,7 +617,7 @@ public class ProcessOneLogCMD_19 {
                     DirectedPseudograph<EntityNode, EventEdge> llmFilteredGraph = llmFilter.filterGraph(allInOneGraph,
                             allSelectedStarts, poiEvent, llmLogPath);
 
-                    IterateGraph filteredOut = new IterateGraph(llmFilteredGraph);
+                    IterateGraph filteredOut = new IterateGraph(llmFilteredGraph, poiEvent, allSelectedStarts);
                     String filteredPath = resFolderForFilter.getAbsolutePath() + "/" +
                             "llm_filtered_graph_" + filename + "_" + method + suffix;
 

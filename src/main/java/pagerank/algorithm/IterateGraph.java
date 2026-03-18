@@ -41,12 +41,16 @@ import java.math.BigDecimal;
 import java.util.*;
 
 public class IterateGraph {
+    private static final String DETECTION_FILL_COLOR = "#d62828";
+    private static final String ENTRY_FILL_COLOR = "#ffb703";
     // 输入的依赖图
     DirectedPseudograph<EntityNode, EventEdge> inputgraph;
     // DOT格式导出器
     DOTExporter<EntityNode, EventEdge> exporter;
     // 节点索引表：用于根据签名快速查找节点
     Map<String, EntityNode> indexOfNode;
+    private final String detectionSignature;
+    private final Set<String> entrySignatures;
 
     /**
      * 构造函数
@@ -56,11 +60,14 @@ public class IterateGraph {
     public IterateGraph(DirectedPseudograph<EntityNode, EventEdge> graph) {
 
         this.inputgraph = graph;
+        this.detectionSignature = null;
+        this.entrySignatures = Collections.emptySet();
         // 创建DOT导出器（包含节点属性）
         exporter = new DOTExporter<>(new EntityIdProvider());
         exporter.setVertexAttributeProvider(v -> {
             Map<String, Attribute> map = new EntityAttributeProvider().apply(v);
             map.put("label", DefaultAttribute.createAttribute(new EntityNameProvider().apply(v)));
+            applyVertexHighlight(map, v);
             return map;
         });
         exporter.setEdgeAttributeProvider(e -> {
@@ -69,6 +76,29 @@ public class IterateGraph {
             return map;
         });
         // 构建节点索引表
+        indexOfNode = new HashMap<>();
+        for (EntityNode n : graph.vertexSet()) {
+            indexOfNode.put(n.getSignature(), n);
+        }
+    }
+
+    public IterateGraph(DirectedPseudograph<EntityNode, EventEdge> graph, String detectionSignature,
+            Collection<String> entrySignatures) {
+        this.inputgraph = graph;
+        this.detectionSignature = normalizeSignature(detectionSignature);
+        this.entrySignatures = normalizeSignatures(entrySignatures);
+        exporter = new DOTExporter<>(new EntityIdProvider());
+        exporter.setVertexAttributeProvider(v -> {
+            Map<String, Attribute> map = new EntityAttributeProvider().apply(v);
+            map.put("label", DefaultAttribute.createAttribute(new EntityNameProvider().apply(v)));
+            applyVertexHighlight(map, v);
+            return map;
+        });
+        exporter.setEdgeAttributeProvider(e -> {
+            Map<String, Attribute> map = new HashMap<>();
+            map.put("label", DefaultAttribute.createAttribute(new EventEdgeProvider().apply(e)));
+            return map;
+        });
         indexOfNode = new HashMap<>();
         for (EntityNode n : graph.vertexSet()) {
             indexOfNode.put(n.getSignature(), n);
@@ -256,6 +286,7 @@ public class IterateGraph {
         export.setVertexAttributeProvider(v -> {
             Map<String, Attribute> map = new EntityAttributeProvider().apply(v);
             map.put("label", DefaultAttribute.createAttribute(new EntityNameProvider().apply(v)));
+            applyVertexHighlight(map, v);
             return map;
         });
         export.setEdgeAttributeProvider(e -> {
@@ -790,4 +821,46 @@ public class IterateGraph {
         }
         return res;
     }
+
+    private void applyVertexHighlight(Map<String, Attribute> map, EntityNode node) {
+        boolean isDetectionNode = detectionSignature != null && detectionSignature.equals(node.getSignature());
+        boolean isEntryNode = entrySignatures.contains(node.getSignature());
+        if (!isDetectionNode && !isEntryNode) {
+            return;
+        }
+
+        map.put("style", DefaultAttribute.createAttribute("filled"));
+
+        if (isDetectionNode) {
+            map.put("fillcolor", DefaultAttribute.createAttribute(DETECTION_FILL_COLOR));
+            map.put("fontcolor", DefaultAttribute.createAttribute("white"));
+            return;
+        }
+
+        map.put("fillcolor", DefaultAttribute.createAttribute(ENTRY_FILL_COLOR));
+        map.put("fontcolor", DefaultAttribute.createAttribute("black"));
+    }
+
+    private static String normalizeSignature(String signature) {
+        if (signature == null) {
+            return null;
+        }
+        String trimmed = signature.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static Set<String> normalizeSignatures(Collection<String> signatures) {
+        Set<String> normalized = new LinkedHashSet<>();
+        if (signatures == null) {
+            return normalized;
+        }
+        for (String signature : signatures) {
+            String trimmed = normalizeSignature(signature);
+            if (trimmed != null) {
+                normalized.add(trimmed);
+            }
+        }
+        return normalized;
+    }
+
 }

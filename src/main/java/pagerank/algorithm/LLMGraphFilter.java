@@ -161,7 +161,7 @@ public class LLMGraphFilter {
         DirectedPseudograph<EntityNode, EventEdge> filteredGraph = buildFilteredGraph(originalGraph, keptEdgeIds);
 
         // 优化#6：生成 LLM 原始输出的中间 SVG（抽取为独立方法）
-        exportIntermediateVisualization(filteredGraph, logFilePath);
+        exportIntermediateVisualization(filteredGraph, logFilePath, poiEvent, filteredEntryPoints);
 
         // 9. 将 LLM 识别的入口节点加入过滤图（确保它们存在于图中）
         Set<EntityNode> llmEntryEntityNodes = new HashSet<>();
@@ -213,10 +213,11 @@ public class LLMGraphFilter {
      * 优化#6：生成 LLM 原始过滤结果的中间可视化 SVG，抽取为独立方法。
      */
     private void exportIntermediateVisualization(
-            DirectedPseudograph<EntityNode, EventEdge> filteredGraph, String logFilePath) {
+            DirectedPseudograph<EntityNode, EventEdge> filteredGraph, String logFilePath,
+            String poiEvent, List<String> entryPoints) {
         try {
             String intermediatePath = logFilePath.replace(".log", "_llm_raw");
-            IterateGraph intermediateOut = new IterateGraph(filteredGraph);
+            IterateGraph intermediateOut = new IterateGraph(filteredGraph, poiEvent, entryPoints);
             intermediateOut.exportGraph(intermediatePath);
             DotToSvg(intermediatePath + ".dot", intermediatePath + ".svg");
             System.out.println("LLM raw output visualization saved: " + intermediatePath + ".svg");
