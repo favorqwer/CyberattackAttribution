@@ -121,50 +121,6 @@ public class CausalityPreserve {
         return afterMerge;
     }
 
-    // Fang's comment merge edge if the time difference is smaller than the input
-    // range, this range could be
-    // 1s, 100 ms and so on. The unit for this input is "s"
-    public DirectedPseudograph<EntityNode, EventEdge> mergeEdgeFallInTheRange(double range) {
-
-        Comparator<EventEdge> cmp = new Comparator<EventEdge>() {
-            @Override
-            public int compare(EventEdge a, EventEdge b) {
-                if (a.getStartTime().compareTo(b.getStartTime()) == 0) {
-                    return a.getEndTime().compareTo(b.getEndTime());
-                }
-                return a.getStartTime().compareTo(b.getStartTime());
-            }
-        };
-        BigDecimal timeDiff = new BigDecimal(range);
-        Set<EventEdge> edgeSet = input.edgeSet();
-        List<EventEdge> edgeList = new LinkedList<>(edgeSet);
-        Collections.sort(edgeList, cmp);
-        Iterator<EventEdge> iter = edgeList.iterator();
-        Map<String, Map<EntityNode, Map<EntityNode, Stack<EventEdge>>>> pairStacks = initializePairStack(edgeSet);
-
-        while (iter.hasNext()) {
-            EventEdge cur = (EventEdge) iter.next();
-            EntityNode source = cur.getSource();
-            EntityNode target = cur.getSink();
-            Stack<EventEdge> stack = pairStacks.get(cur.getEvent()).get(source).get(target);
-            if (stack.isEmpty()) {
-                stack.push(cur);
-            } else {
-                EventEdge edgePrevious = stack.pop();
-                BigDecimal diff = cur.getStartTime().subtract(edgePrevious.endTime);
-                if (diff.compareTo(timeDiff) <= 0) {
-                    edgePrevious = merge(edgePrevious, cur);
-                    stack.push(edgePrevious);
-                } else {
-                    stack.push(edgePrevious);
-                    stack.push(cur);
-                }
-            }
-        }
-        afterMerge = input;
-        return afterMerge;
-    }
-
     /**
      * mergeEdgeFallInTheRange2 - 基于时间窗口的边合并方法（优化版本）
      * 
