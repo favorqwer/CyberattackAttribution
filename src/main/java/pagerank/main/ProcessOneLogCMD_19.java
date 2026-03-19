@@ -85,7 +85,7 @@ public class ProcessOneLogCMD_19 {
     public static void run_exp_backward(DirectedPseudograph<EntityNode, EventEdge> orignal, String resultDir,
             String suffix, double threshold, boolean trackOrigin, String logfile, String[] IP, String detection,
             String[] highRP, String[] midRP, String[] lowRP, String filename, double detectionSize,
-            Set<String> seedSources, String[] criticalEdges, String mode, JSONObject jsonlog,
+            Set<String> seedSources, String[] criticalEdges, String mode, String cprMode, double cprTimeWindow, JSONObject jsonlog,
             String[] importantEntries) {
         try {
             // 1. 打开统计文件（用于记录每一步的节点/边数量、耗时等）
@@ -126,9 +126,33 @@ public class ProcessOneLogCMD_19 {
             // 这步是很多 provenance 压缩论文（如 ProvTracer、MPI、OmegaLog 等）都会做的操作。
             CausalityPreserve CPR = new CausalityPreserve(backTrack.afterBackTrack);
             start = System.currentTimeMillis();
-            double timeWindow = 10.0;
-            CPR.mergeEdgeFallInTheRange2(timeWindow);
-            System.out.println("The size of time window is :" + timeWindow + "(s)");
+            String cprModeNormalized = cprMode == null ? "window" : cprMode.trim().toLowerCase(Locale.ROOT);
+            switch (cprModeNormalized) {
+                case "choose1":
+                case "1":
+                    CPR.CPR(1);
+                    System.out.println("CPR mode choose=1 (consider time and event type)");
+                    break;
+                case "choose2":
+                case "2":
+                    CPR.CPR(2);
+                    System.out.println("CPR mode choose=2 (consider event type only)");
+                    break;
+                case "choose3":
+                case "3":
+                    CPR.CPR(3);
+                    System.out.println("CPR mode choose=3 (ignore time and event type)");
+                    break;
+                case "window":
+                    CPR.mergeEdgeFallInTheRange2(cprTimeWindow);
+                    System.out.println("CPR mode window (mergeEdgeFallInTheRange2), time window is :" + cprTimeWindow + "(s)");
+                    break;
+                default:
+                    System.out.println("Unknown cpr_mode: " + cprMode + ", fallback to window mode");
+                    CPR.mergeEdgeFallInTheRange2(cprTimeWindow);
+                    System.out.println("CPR mode window (mergeEdgeFallInTheRange2), time window is :" + cprTimeWindow + "(s)");
+                    break;
+            }
             end = System.currentTimeMillis();
             timeCost = getTimeCost(start, end);
             System.out.println("Edge Merge cost is: " + timeCost);

@@ -26,6 +26,8 @@ import java.util.Set;
 
 public class ExperimentRunnerCmd {
     public static String mode;
+    public static String cprMode;
+    public static double cprTimeWindow;
 
     DirectedPseudograph<EntityNode, EventEdge> graphFromLog;
     String PathToLogs;
@@ -105,6 +107,8 @@ public class ExperimentRunnerCmd {
     // Fang: for benign cases: avoid parsing the log several times.
     public void run2() throws FileNotFoundException {
         mode = resolveMode();
+        cprMode = resolveCprMode();
+        cprTimeWindow = resolveCprTimeWindow();
         String[] localIP = GlobalConfig.getInstance().getLocalIP();
 
         File resDir = makeResDir(PathToRes);
@@ -149,6 +153,8 @@ public class ExperimentRunnerCmd {
                 JSONObject jsonLog = new JSONObject();
                 jsonLog.put("Case", e.log.getName());
                 jsonLog.put("Mode", mode);
+                jsonLog.put("CPRMode", cprMode);
+                jsonLog.put("CPRTimeWindow", cprTimeWindow);
 
                 ProcessOneLogCMD_19.run_exp_backward(
                         graphFromLog,
@@ -167,6 +173,8 @@ public class ExperimentRunnerCmd {
                         e.getInitial(),
                         e.criticalEdges,
                         mode,
+                        cprMode,
+                        cprTimeWindow,
                         jsonLog,
                         e.getEntries()
                 );
@@ -193,6 +201,18 @@ public class ExperimentRunnerCmd {
         String configuredMode = GlobalConfig.getInstance().getWeightMode();
         System.out.println("Weight mode: " + configuredMode);
         return configuredMode.trim();
+    }
+
+    private String resolveCprMode() {
+        String configuredCprMode = GlobalConfig.getInstance().getCprMode();
+        System.out.println("CPR mode: " + configuredCprMode);
+        return configuredCprMode.trim();
+    }
+
+    private double resolveCprTimeWindow() {
+        double configuredCprTimeWindow = GlobalConfig.getInstance().getCprTimeWindow();
+        System.out.println("CPR time window: " + configuredCprTimeWindow + "(s)");
+        return configuredCprTimeWindow;
     }
 
     private File makeResDir(String pathToRes) {
