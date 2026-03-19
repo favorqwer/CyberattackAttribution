@@ -129,29 +129,38 @@ public class ProcessOneLogCMD_19 {
             String cprModeNormalized = cprMode == null ? CausalityPreserve.MODE_WINDOWED_SEQUENCE
                     : cprMode.trim().toLowerCase(Locale.ROOT);
             switch (cprModeNormalized) {
+                case CausalityPreserve.MODE_STANDARD_CPR:
                 case CausalityPreserve.MODE_CAUSAL_STRICT:
-                    CPR.applyMode(CausalityPreserve.MODE_CAUSAL_STRICT, cprTimeWindow);
-                    System.out.println("CPR mode causal_strict (consider time and event type)");
+                    CPR.applyMode(cprModeNormalized, cprTimeWindow);
+                    System.out.println("CPR mode standard_cpr (paper-aligned causality-preserved reduction)");
                     break;
                 case CausalityPreserve.MODE_TYPE_AGGREGATION:
                     CPR.applyMode(CausalityPreserve.MODE_TYPE_AGGREGATION, cprTimeWindow);
                     System.out.println("CPR mode type_aggregation (consider event type only)");
                     break;
+                case CausalityPreserve.MODE_FULL_MERGE:
                 case CausalityPreserve.MODE_ENDPOINT_AGGREGATION:
-                    CPR.applyMode(CausalityPreserve.MODE_ENDPOINT_AGGREGATION, cprTimeWindow);
-                    System.out.println("CPR mode endpoint_aggregation (ignore time and event type)");
+                    CPR.applyMode(cprModeNormalized, cprTimeWindow);
+                    System.out.println("CPR mode full_merge (merge all edges per directed endpoint pair)");
                     break;
                 case CausalityPreserve.MODE_WINDOWED_SEQUENCE:
                     CPR.applyMode(CausalityPreserve.MODE_WINDOWED_SEQUENCE, cprTimeWindow);
                     System.out.println("CPR mode windowed_sequence, time window is :" + cprTimeWindow + "(s)");
                     break;
+                case CausalityPreserve.MODE_NO_MERGE:
+                    CPR.applyMode(CausalityPreserve.MODE_NO_MERGE, cprTimeWindow);
+                    System.out.println("CPR mode no_merge (no edge fusion)");
+                    break;
                 default:
                     throw new IllegalArgumentException("Unsupported cpr_mode: " + cprMode
                             + ". Supported values: "
+                            + CausalityPreserve.MODE_STANDARD_CPR + ", "
                             + CausalityPreserve.MODE_CAUSAL_STRICT + ", "
                             + CausalityPreserve.MODE_TYPE_AGGREGATION + ", "
+                            + CausalityPreserve.MODE_FULL_MERGE + ", "
                             + CausalityPreserve.MODE_ENDPOINT_AGGREGATION + ", "
-                            + CausalityPreserve.MODE_WINDOWED_SEQUENCE);
+                            + CausalityPreserve.MODE_WINDOWED_SEQUENCE + ", "
+                            + CausalityPreserve.MODE_NO_MERGE);
             }
             end = System.currentTimeMillis();
             timeCost = getTimeCost(start, end);

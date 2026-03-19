@@ -36,10 +36,13 @@ import java.util.*;
  * 3. mergeWithoutConsideringTimeAndType: 不考虑时间和类型（完全合并）
  */
 public class CausalityPreserve {
+    public static final String MODE_STANDARD_CPR = "standard_cpr";
     public static final String MODE_CAUSAL_STRICT = "causal_strict";
     public static final String MODE_TYPE_AGGREGATION = "type_aggregation";
+    public static final String MODE_FULL_MERGE = "full_merge";
     public static final String MODE_ENDPOINT_AGGREGATION = "endpoint_aggregation";
     public static final String MODE_WINDOWED_SEQUENCE = "windowed_sequence";
+    public static final String MODE_NO_MERGE = "no_merge";
 
     // 输入的依赖图（后向切片后的子图）
     DirectedPseudograph<EntityNode, EventEdge> input;
@@ -68,23 +71,35 @@ public class CausalityPreserve {
     public DirectedPseudograph<EntityNode, EventEdge> applyMode(String mode, double windowSeconds) {
         String normalized = mode == null ? MODE_WINDOWED_SEQUENCE : mode.trim().toLowerCase(Locale.ROOT);
         switch (normalized) {
+            case MODE_STANDARD_CPR:
             case MODE_CAUSAL_STRICT:
                 return applyCausalStrictMode();
             case MODE_TYPE_AGGREGATION:
                 return applyTypeAggregationMode();
+            case MODE_FULL_MERGE:
             case MODE_ENDPOINT_AGGREGATION:
                 return applyEndpointAggregationMode();
             case MODE_WINDOWED_SEQUENCE:
                 return applyWindowedSequenceMode(windowSeconds);
+            case MODE_NO_MERGE:
+                return applyNoMergeMode();
             default:
                 throw new IllegalArgumentException(
                         "Unsupported cpr_mode: " + mode
                                 + ". Supported values: "
+                                + MODE_STANDARD_CPR + ", "
                                 + MODE_CAUSAL_STRICT + ", "
                                 + MODE_TYPE_AGGREGATION + ", "
+                                + MODE_FULL_MERGE + ", "
                                 + MODE_ENDPOINT_AGGREGATION + ", "
-                                + MODE_WINDOWED_SEQUENCE);
+                                + MODE_WINDOWED_SEQUENCE + ", "
+                                + MODE_NO_MERGE);
         }
+    }
+
+    private DirectedPseudograph<EntityNode, EventEdge> applyNoMergeMode() {
+        afterMerge = input;
+        return afterMerge;
     }
 
     /*
@@ -94,15 +109,19 @@ public class CausalityPreserve {
      * Xiao's paper.
      */
     private DirectedPseudograph<EntityNode, EventEdge> applyCausalStrictMode() {
+        DirectedPseudograph<EntityNode, EventEdge> merged = new DirectedPseudograph<EntityNode, EventEdge>(
+                EventEdge.class);
+        for (EntityNode n : input.vertexSet()) {
+            merged.addVertex(n);
+        }
+
         Set<EventEdge> edgeSet = input.edgeSet();
         List<EventEdge> edgeList = new LinkedList<>(edgeSet);
         Collections.sort(edgeList, (a, b) -> a.getStartTime().compareTo(b.getStartTime()));
-        Iterator iter = edgeList.iterator();
-        // Map<EntityNode, Map<EntityNode, Deque<EventEdge>>> mapOfStack = new
-        // HashMap<>();
+        Iterator<EventEdge> iter = edgeList.iterator();
         Map<String, Map<EntityNode, Map<EntityNode, Stack<EventEdge>>>> pairStacks = initializePairStack(edgeSet);
         while (iter.hasNext()) {
-            EventEdge cur = (EventEdge) iter.next();
+            EventEdge cur = iter.next();
             EntityNode source = cur.getSource();
             EntityNode target = cur.getSink();
             Stack<EventEdge> stack = pairStacks.get(cur.getEvent()).get(source).get(target);
@@ -110,16 +129,29 @@ public class CausalityPreserve {
                 stack.push(cur);
             } else {
                 EventEdge edgePrevious = stack.pop();
-                if (backwardCheck(edgePrevious, cur, source)) {
-                    edgePrevious = merge(edgePrevious, cur);
+                if (backwardCheck(edgePrevious, cur, source)
+                        && forwardCheck(edgePrevious, cur, target)) {
+                    edgePrevious = edgePrevious.merge(cur);
                     stack.push(edgePrevious);
                 } else {
+                    stack.push(edgePrevious);
                     stack.push(cur);
                 }
             }
         }
-        // DirectedPseudograph<EntityNode, EventEdge> res = getCPR(mapOfStack);
-        afterMerge = input;
+
+        for (String event : pairStacks.keySet()) {
+            for (EntityNode source : pairStacks.get(event).keySet()) {
+                for (EntityNode sink : pairStacks.get(event).get(source).keySet()) {
+                    Stack<EventEdge> s = pairStacks.get(event).get(source).get(sink);
+                    for (EventEdge e : s) {
+                        merged.addEdge(source, sink, e);
+                    }
+                }
+            }
+        }
+
+        afterMerge = merged;
         return afterMerge;
     }
 
@@ -297,45 +329,51 @@ public class CausalityPreserve {
     }
 
     private boolean backwardCheck(EventEdge p, EventEdge l, EntityNode u) {
+        BigDecimal gapStart = p.getEndTime();
+        BigDecimal gapEnd = l.getStartTime();
+        if (gapEnd.compareTo(gapStart) <= 0) {
+            return true;
+        }
+
         Set<EventEdge> incoming = input.incomingEdgesOf(u);
-        BigDecimal[] endTimes = { p.getEndTime(), l.getEndTime() };
-        if (p.getEndTime() == null) {
-            System.out.println(p.getID());
-            System.out.println(p.getEvent());
-        }
-        if (l.getEndTime() == null) {
-            System.out.println(l.getID());
-            System.out.println(l.getEvent());
-        }
-        Arrays.sort(endTimes);
         for (EventEdge edge : incoming) {
-            BigDecimal[] timeWindow = edge.getInterval();
-            if (isOverlap(timeWindow, endTimes)) {
+            if (edge == p || edge == l) {
+                continue;
+            }
+            if (isBetween(edge.getStartTime(), gapStart, gapEnd)
+                    || isBetween(edge.getEndTime(), gapStart, gapEnd)
+                    || (edge.getStartTime().compareTo(gapStart) <= 0
+                            && edge.getEndTime().compareTo(gapEnd) >= 0)) {
                 return false;
             }
         }
         return true;
     }
 
-    private boolean forwardCheck(EventEdge p, EventEdge l, EntityNode u, BigDecimal curTime) {
-        BigDecimal[] startTime = { p.getStartTime(), l.getStartTime() };
-        Set<EventEdge> outgoing = input.outgoingEdgesOf(u);
-        List<EventEdge> outgongCandidates = new ArrayList<>();
-
-        for (EventEdge e : outgoing) {
-            if (e.getStartTime().compareTo(curTime) < 0) {
-                outgongCandidates.add(e);
-            }
+    private boolean forwardCheck(EventEdge p, EventEdge l, EntityNode v) {
+        BigDecimal gapStart = p.getEndTime();
+        BigDecimal gapEnd = l.getStartTime();
+        if (gapEnd.compareTo(gapStart) <= 0) {
+            return true;
         }
 
-        Arrays.sort(startTime);
-        for (EventEdge edge : outgongCandidates) {
-            BigDecimal[] timeWindow = edge.getInterval();
-            if (isOverlap(timeWindow, startTime)) {
+        Set<EventEdge> outgoing = input.outgoingEdgesOf(v);
+        for (EventEdge edge : outgoing) {
+            if (edge == p || edge == l) {
+                continue;
+            }
+            if (isBetween(edge.getStartTime(), gapStart, gapEnd)
+                    || isBetween(edge.getEndTime(), gapStart, gapEnd)
+                    || (edge.getStartTime().compareTo(gapStart) <= 0
+                            && edge.getEndTime().compareTo(gapEnd) >= 0)) {
                 return false;
             }
         }
         return true;
+    }
+
+    private boolean isBetween(BigDecimal time, BigDecimal startExclusive, BigDecimal endExclusive) {
+        return time.compareTo(startExclusive) > 0 && time.compareTo(endExclusive) < 0;
     }
 
     private boolean isOverlap(BigDecimal[] a, BigDecimal[] b) {
