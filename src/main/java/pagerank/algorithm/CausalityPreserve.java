@@ -43,6 +43,8 @@ public class CausalityPreserve {
     public static final String MODE_WINDOWED_SEQUENCE = "windowed_sequence";
     public static final String MODE_NO_MERGE = "no_merge";
     public static final String MODE_PCAR = "pcar";
+    public static final String MODE_FD = "fd";
+    public static final String MODE_SD = "sd";
 
     private static final double PCAR_HOT_WINDOW_SECONDS = 5.0d;
     private static final int PCAR_HOT_EVENT_THRESHOLD = 20;
@@ -86,6 +88,10 @@ public class CausalityPreserve {
                 return applyNoMergeMode();
             case MODE_PCAR:
                 return applyPcarMode(windowSeconds, PCAR_HOT_WINDOW_SECONDS, PCAR_HOT_EVENT_THRESHOLD);
+            case MODE_FD:
+                return applyFdMode();
+            case MODE_SD:
+                return applySdMode();
             default:
                 throw new IllegalArgumentException(
                         "Unsupported cpr_mode: " + mode
@@ -96,8 +102,114 @@ public class CausalityPreserve {
                                 + MODE_ENDPOINT_AGGREGATION + ", "
                                 + MODE_WINDOWED_SEQUENCE + ", "
                                 + MODE_NO_MERGE + ", "
-                                + MODE_PCAR);
+                                + MODE_PCAR + ", "
+                                + MODE_FD + ", "
+                                + MODE_SD);
         }
+    }
+
+    private DirectedPseudograph<EntityNode, EventEdge> applyFdMode() {
+        return applyDependencePreservingReduction(false);
+    }
+
+    private DirectedPseudograph<EntityNode, EventEdge> applySdMode() {
+        return applyDependencePreservingReduction(true);
+    }
+
+    /**
+     * FD/SD 的系统内实现：
+     * 1) FD: 按时间顺序处理事件，若当前图中已存在 u->v 路径，则丢弃该边（REO* 风格冗余消除）。
+     * 2) SD: 在 FD 基础上再做源依赖过滤，若 Src(u) ⊆ Src(v) 则丢弃该边。
+     */
+    private DirectedPseudograph<EntityNode, EventEdge> applyDependencePreservingReduction(boolean sourceDependence) {
+        DirectedPseudograph<EntityNode, EventEdge> reduced = new DirectedPseudograph<>(EventEdge.class);
+        for (EntityNode n : input.vertexSet()) {
+            reduced.addVertex(n);
+        }
+
+        List<EventEdge> orderedEdges = new ArrayList<>(input.edgeSet());
+        orderedEdges.sort((a, b) -> {
+            int startCmp = a.getStartTime().compareTo(b.getStartTime());
+            if (startCmp != 0) {
+                return startCmp;
+            }
+            return a.getEndTime().compareTo(b.getEndTime());
+        });
+
+        Map<EntityNode, Set<EntityNode>> sourceSets = sourceDependence
+                ? initializeSourceSets(input)
+                : Collections.emptyMap();
+
+        for (EventEdge edge : orderedEdges) {
+            EntityNode source = edge.getSource();
+            EntityNode sink = edge.getSink();
+
+            if (source.equals(sink)) {
+                continue;
+            }
+
+            if (hasPath(reduced, source, sink)) {
+                continue;
+            }
+
+            if (sourceDependence) {
+                Set<EntityNode> sourceAncestors = sourceSets.computeIfAbsent(source, k -> new HashSet<>());
+                Set<EntityNode> sinkAncestors = sourceSets.computeIfAbsent(sink, k -> new HashSet<>());
+                if (sinkAncestors.containsAll(sourceAncestors)) {
+                    continue;
+                }
+                sinkAncestors.addAll(sourceAncestors);
+            }
+
+            reduced.addEdge(source, sink, cloneEdge(edge));
+        }
+
+        afterMerge = reduced;
+        return afterMerge;
+    }
+
+    private Map<EntityNode, Set<EntityNode>> initializeSourceSets(
+            DirectedPseudograph<EntityNode, EventEdge> graph) {
+        Map<EntityNode, Set<EntityNode>> sourceSets = new HashMap<>();
+        for (EntityNode node : graph.vertexSet()) {
+            Set<EntityNode> seeds = new HashSet<>();
+            if (graph.incomingEdgesOf(node).isEmpty()) {
+                seeds.add(node);
+            }
+            sourceSets.put(node, seeds);
+        }
+        return sourceSets;
+    }
+
+    private boolean hasPath(DirectedPseudograph<EntityNode, EventEdge> graph,
+            EntityNode source,
+            EntityNode sink) {
+        if (source.equals(sink)) {
+            return true;
+        }
+
+        Set<EntityNode> visited = new HashSet<>();
+        Deque<EntityNode> queue = new ArrayDeque<>();
+        queue.add(source);
+        visited.add(source);
+
+        while (!queue.isEmpty()) {
+            EntityNode current = queue.removeFirst();
+            for (EventEdge edge : graph.outgoingEdgesOf(current)) {
+                EntityNode next = edge.getSink();
+                if (next.equals(sink)) {
+                    return true;
+                }
+                if (visited.add(next)) {
+                    queue.addLast(next);
+                }
+            }
+        }
+        return false;
+    }
+
+    private EventEdge cloneEdge(EventEdge edge) {
+        return new EventEdge(edge, edge.getSource(), edge.getSink(), edge.getID());
     }
 
     private DirectedPseudograph<EntityNode, EventEdge> applyNoMergeMode() {
