@@ -4,7 +4,7 @@ import logparsers.exceptions.UnknownEventException;
 import logparsers.systemcalls.Fingerprint;
 import logparsers.systemcalls.SystemCall;
 import logparsers.systemcalls.SystemCallFactory;
-import pagerank.config.MetaConfig;
+import pagerank.config.GlobalConfig;
 import pagerank.entity.Process;
 import pagerank.entity.*;
 
@@ -67,11 +67,12 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
 
     // registerSystemCalls()方法注册了所有系统调用处理器：
     private void registerSystemCalls(){
+        GlobalConfig globalConfig = GlobalConfig.getInstance();
         //FtoP
         SystemCallFactory f2pSystemCall = new SystemCallFactory("FtoP",FileEntity.class,null)
                 .addAction(this::updateP2PLinks)
                 .addAction(this::addF2PEvent);
-        for(String s : MetaConfig.ftopSystemCall) {
+        for(String s : globalConfig.getFtopSystemCall()) {
             SystemCall systemCall = f2pSystemCall.getSystemCall(s);
             answering.put(systemCall.fingerPrint,systemCall);
         }
@@ -80,7 +81,7 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         SystemCallFactory p2fSystemCall = new SystemCallFactory("PtoF",FileEntity.class,null)
                 .addAction(this::updateP2PLinks)
                 .addAction(this::addP2FEvent);
-        for(String s : MetaConfig.ptofSystemCall) {
+        for(String s : globalConfig.getPtofSystemCall()) {
             SystemCall systemCall = p2fSystemCall.getSystemCall(s);
             answering.put(systemCall.fingerPrint,systemCall);
         }
@@ -89,7 +90,7 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         SystemCallFactory n2pSystemCall = new SystemCallFactory("NtoP",NetworkEntity.class,null)
                 .addAction(this::updateP2PLinks)
                 .addAction(this::addN2PEvent);
-        for(String s : MetaConfig.ntopSystemCall) {
+        for(String s : globalConfig.getNtopSystemCall()) {
             SystemCall systemCall = n2pSystemCall.getSystemCall(s);
             answering.put(systemCall.fingerPrint,systemCall);
         }
@@ -99,7 +100,7 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         SystemCallFactory p2nSystemCall = new SystemCallFactory("PtoN",NetworkEntity.class,null)
                 .addAction(this::updateP2PLinks)
                 .addAction(this::addP2NEvent);
-        for(String s : MetaConfig.ptonSystemCall) {
+        for(String s : globalConfig.getPtonSystemCall()) {
             SystemCall systemCall = p2nSystemCall.getSystemCall(s);
             answering.put(systemCall.fingerPrint,systemCall);
         }

@@ -56,7 +56,7 @@ java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar \
 
 ### 权重计算模式 (mode参数)
 
-通过 `System.getProperty("depimpact.mode")` 或 `System.getenv("DEPIMPACT_MODE")` 设置，默认 `clusterall`：
+通过根目录的 `depimpact.properties` 中的 `weight_mode` 设置，默认 `clusterall`：
 
 | 模式 | 说明 |
 |------|------|
@@ -86,10 +86,11 @@ detectionSize = 1024                    # 检测到的数据量
 criticalEdge = edge1;edge2              # 关键边(用于评估)
 ```
 
-### 3. LLM配置文件 (llm.properties)
-可选配置文件，用于启用LLM图过滤功能。
+### 3. 全局配置文件 (depimpact.properties)
+系统级配置统一放在根目录的 `depimpact.properties` 中，包括 LLM 图过滤配置、Weight mode、本地 IP、默认 midRP 和 syscall 白名单等。
 
 ```properties
+weight_mode=clusterall
 llm_enabled=true                       # 是否启用LLM过滤
 base_url=https://integrate.api.nvidia.com/v1  # LLM API端点
 api_key = your-api-key                 # API密钥

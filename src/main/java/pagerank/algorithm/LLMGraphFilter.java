@@ -9,11 +9,11 @@ import org.jgrapht.graph.DirectedPseudograph;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
+import pagerank.config.GlobalConfig;
 import pagerank.entity.EntityNode;
 import pagerank.entity.EventEdge;
 
 import java.io.BufferedReader;
-import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -53,28 +53,16 @@ public class LLMGraphFilter {
     }
 
     /**
-     * 加载 LLM 配置文件 (llm.properties)。
+     * 从全局配置文件加载 LLM 配置。
      */
     private void loadConfig() {
-        Properties prop = new Properties();
-        try (FileInputStream fis = new FileInputStream("llm.properties")) {
-            prop.load(fis);
-            this.llmEnabled = Boolean.parseBoolean(prop.getProperty("llm_enabled", "true").trim());
-            this.baseUrl = prop.getProperty("base_url", "");
-            this.apiKey = prop.getProperty("api_key", "");
-            this.modelName = prop.getProperty("model", "");
-            // 优化#11：temperature 和 max_tokens 从配置文件读取
-            this.temperature = Double.parseDouble(prop.getProperty("temperature", "0.1").trim());
-            this.maxTokens = Integer.parseInt(prop.getProperty("max_tokens", "20480").trim());
-        } catch (Exception e) {
-            System.err.println("Warning: Could not load llm.properties. Using default values.");
-            this.llmEnabled = false;
-            this.baseUrl = "";
-            this.apiKey = "";
-            this.modelName = "";
-            this.temperature = 0.1;
-            this.maxTokens = 20480;
-        }
+        GlobalConfig globalConfig = GlobalConfig.getInstance();
+        this.llmEnabled = globalConfig.isLlmEnabled();
+        this.baseUrl = globalConfig.getBaseUrl();
+        this.apiKey = globalConfig.getApiKey();
+        this.modelName = globalConfig.getModelName();
+        this.temperature = globalConfig.getTemperature();
+        this.maxTokens = globalConfig.getMaxTokens();
     }
 
     /**

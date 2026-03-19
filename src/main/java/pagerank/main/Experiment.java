@@ -1,6 +1,6 @@
 package pagerank.main;
 
-import pagerank.config.MetaConfig;
+import pagerank.config.GlobalConfig;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -137,7 +137,7 @@ public class Experiment {
         String lowRPString = config.getProperty("lowRP","");
         lowRP = lowRPString.split(",");
 
-        String[] defaultMidRP = MetaConfig.midRP;
+        String[] defaultMidRP = GlobalConfig.getInstance().getMidRP();
         String midRPString = config.getProperty("midRP","");
         String[] additionalMidRP = midRPString.split(",");
         List<String> tmp = new ArrayList<>();

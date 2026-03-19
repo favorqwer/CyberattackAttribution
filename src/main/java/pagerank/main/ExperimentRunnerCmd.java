@@ -5,7 +5,7 @@ import guru.nidi.graphviz.engine.GraphvizV8Engine;
 import org.jgrapht.graph.DirectedPseudograph;
 import org.json.simple.JSONObject;
 import pagerank.algorithm.GetGraph;
-import pagerank.config.MetaConfig;
+import pagerank.config.GlobalConfig;
 import pagerank.entity.EntityNode;
 import pagerank.entity.EventEdge;
 
@@ -105,6 +105,7 @@ public class ExperimentRunnerCmd {
     // Fang: for benign cases: avoid parsing the log several times.
     public void run2() throws FileNotFoundException {
         mode = resolveMode();
+        String[] localIP = GlobalConfig.getInstance().getLocalIP();
 
         File resDir = makeResDir(PathToRes);
         File[] logs = getLogs(PathToLogs);
@@ -114,7 +115,7 @@ public class ExperimentRunnerCmd {
         PrintStream logStream;
 
         try {
-            GetGraph generator = new GetGraph(logs[0].getPath(), MetaConfig.localIP);
+            GetGraph generator = new GetGraph(logs[0].getPath(), localIP);
             generator.GenerateGraph();
             graphFromLog = generator.getJg();
         } catch (Exception e) {
@@ -156,7 +157,7 @@ public class ExperimentRunnerCmd {
                         e.threshold,
                         e.trackOrigin,
                         e.log.getAbsolutePath(),
-                        MetaConfig.localIP,
+                        localIP,
                         e.POI,
                         e.highRP,
                         e.midRP,
@@ -189,13 +190,7 @@ public class ExperimentRunnerCmd {
     }
 
     private String resolveMode() {
-        String configuredMode = System.getProperty("depimpact.mode");
-        if (configuredMode == null || configuredMode.trim().isEmpty()) {
-            configuredMode = System.getenv("DEPIMPACT_MODE");
-        }
-        if (configuredMode == null || configuredMode.trim().isEmpty()) {
-            configuredMode = "clusterall";
-        }
+        String configuredMode = GlobalConfig.getInstance().getWeightMode();
         System.out.println("Weight mode: " + configuredMode);
         return configuredMode.trim();
     }

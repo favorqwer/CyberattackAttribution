@@ -8,7 +8,7 @@ import pagerank.provider.EntityIdProvider;
 import pagerank.provider.EntityNameProvider;
 import pagerank.provider.EventEdgeProvider;
 import pagerank.provider.EdgeAmountTimeProvider;
-import pagerank.config.MetaConfig;
+import pagerank.config.GlobalConfig;
 /**
  * IterateGraph - 图遍历与输出工具类
  * 
@@ -724,7 +724,7 @@ public class IterateGraph {
     public static List<String> getCandidateEntryPoint(DirectedPseudograph<EntityNode, EventEdge> graph,
             String detectionSignature) {
         List<String> res = new LinkedList<>();
-        Set<String> libraries = new HashSet<String>(Arrays.asList(MetaConfig.midRP));
+        Set<String> libraries = new HashSet<String>(Arrays.asList(GlobalConfig.getInstance().getMidRP()));
         for (EntityNode v : graph.vertexSet()) {
             if (detectionSignature != null && detectionSignature.equals(v.getSignature())) {
                 continue;
