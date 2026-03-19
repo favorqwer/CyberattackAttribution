@@ -1042,18 +1042,6 @@ public class BackwardPropagate_pf {
         return projectionVector;
     }
 
-    private double fisherObjective(RealMatrix sb, RealMatrix sw, RealVector v) {
-        // J(v) = (v^T*sb*v)/(v^T*sw*v)
-        // sb: between-group scattering matrix, sw: within-group scattering matrix
-
-        double numerator = sb.preMultiply(v).dotProduct(v);
-        double denominator = sw.preMultiply(v).dotProduct(v); // should be non-zero
-        System.out.println("v^T*sb*v: " + numerator);
-        System.out.println("v^T*sw*v: " + denominator);
-
-        return numerator / denominator;
-    }
-
     private double fisherObjectiveNumerator(RealMatrix sb, RealVector v) {
         // Numerator of J(v): v^T*sb*v
         return sb.preMultiply(v).dotProduct(v);
@@ -1166,16 +1154,6 @@ public class BackwardPropagate_pf {
         seedSources = set;
     }
 
-    private double getStructureWeightForward(EventEdge e) {
-        EntityNode source = e.getSource();
-        if (seedSources.contains(source.getSignature())) { // structureWeight(seed) = total number of edges
-            return graph.edgeSet().size() * 1.0;
-        }
-        int inDegree = graph.inDegreeOf(source);
-        int outDegree = graph.outDegreeOf(source);
-        return inDegree / (outDegree * 1.0);
-    }
-
     private double getStructureWeight(EventEdge e) {
         EntityNode sink = e.getSink();
         int inDegree = graph.inDegreeOf(sink);
@@ -1198,57 +1176,6 @@ public class BackwardPropagate_pf {
         } else {
             return 1 / (outDegree * 1.0) + offset;
         }
-    }
-
-    private double getWeightAboueEdgesNumber(EntityNode e) {
-        double weightBasedOnEdgeNumber = 0.0;
-        Set<EntityNode> sourceOfIncoming = getSources(e);
-        for (EntityNode node : sourceOfIncoming) {
-            Set<EventEdge> sourceFornode = graph.incomingEdgesOf(node);
-            if (sourceFornode.size() == 0) {
-                weightBasedOnEdgeNumber += 1 / (sourceOfIncoming.size() * 1.0);
-            } else {
-                weightBasedOnEdgeNumber += 1 / (sourceOfIncoming.size() * 1.0) +
-                        1 / (sourceFornode.size() * 1.0);
-            }
-        }
-        return weightBasedOnEdgeNumber;
-    }
-
-    public void PageRankIteration(String detection) {
-        Set<EntityNode> vertexSet = graph.vertexSet();
-        double fluctuation = 1.0;
-        int iterTime = 0;
-        System.out.println();
-        while (fluctuation >= 0.0000000000001) {
-            double culmativediff = 0.0;
-            iterTime++;
-            Map<Long, Double> preReputation = getReputation();
-            for (EntityNode v : vertexSet) {
-                if (v.getSignature().equals(detection))
-                    System.out.println(v.reputation);
-                Set<EventEdge> edges = graph.incomingEdgesOf(v);
-                if (edges.size() == 0)
-                    continue;
-                double rep = 0.0;
-                for (EventEdge edge : edges) {
-                    EntityNode source = edge.getSource();
-                    int numberOfOutEgeFromSource = graph.outDegreeOf(source);
-                    double total_weight = 0.0;
-                    // for (EventEdge oe:graph.outgoingEdgesOf(source)){
-                    // total_weight +=
-                    // weights.get(graph.getEdgeTarget(oe).getID()).get(source.getID());
-                    // }
-                    rep += preReputation.get(source.getID()) * weights.get(edge.id);
-                }
-                rep = rep * dumpingFactor + (1 - dumpingFactor) / vertexSet.size();
-                culmativediff += Math.abs(rep - preReputation.get(v.getID()));
-                v.setReputation(rep);
-            }
-            fluctuation = culmativediff;
-        }
-        System.out
-                .println(String.format("After %d times iteration, the reputation of each vertex is stable", iterTime));
     }
 
     // PagerankIterationBackward
@@ -1290,96 +1217,6 @@ public class BackwardPropagate_pf {
         }
     }
 
-    @Deprecated
-    public void PageRankIterationBackwardLimitedByStepInfo(String[] highRP, String[] midRP,
-            String[] lowRP, String detection, Map<String, Integer> stepInfo) {
-        double alarmlevel = 0.85;
-        Set<EntityNode> vertexSet = graph.vertexSet();
-        Set<String> sources = new HashSet<>(Arrays.asList(highRP));
-        sources.addAll(Arrays.asList(lowRP));
-        try {
-            File stepInfoFile = new File("stepInfo.txt");
-            FileWriter fileWriter = new FileWriter(stepInfoFile);
-            PrintWriter pwriter = new PrintWriter(fileWriter);
-            for (String key : stepInfo.keySet()) {
-                pwriter.println(key + ": " + stepInfo.get(key).toString());
-            }
-            pwriter.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        // We don't need special treat of library any more.
-        // sources.addAll(Arrays.asList(midRP));
-        double fluctuation = 1.0;
-        int iterTime = 0;
-        while (fluctuation >= 1e-5) {
-            double culmativediff = 0.0;
-            iterTime++;
-            Map<Long, Double> preReputation = getReputation();
-            for (EntityNode v : vertexSet) {
-                if (v.getSignature().equals(detection))
-                    System.out.println(v.reputation);
-                if (sources.contains(v.getSignature()))
-                    continue;
-                Set<EventEdge> edges = graph.outgoingEdgesOf(v);
-                double rep = 0.0;
-                for (EventEdge edge : edges) {
-                    EntityNode sink = edge.getSink();
-                    if (stepInfo.get(sink.getSignature()) < stepInfo.get(v.getSignature())) {
-                        rep += (preReputation.get(sink.getID()) * edge.weight);
-                    }
-                }
-                // rep = rep*alarmlevel+0.5*(1-alarmlevel);
-                culmativediff += Math.abs(rep - preReputation.get(v.getID()));
-                v.setReputation(rep);
-            }
-            fluctuation = culmativediff;
-            if (iterTime <= 20) {
-                IterateGraph.printReputation(graph, iterTime);
-            }
-        }
-        System.out
-                .println(String.format("After %d times iteration, the reputation of each vertex is stable", iterTime));
-    }
-
-    protected void normalizeWeightsAfterFiltering() {
-        Set<EntityNode> vertices = graph.vertexSet();
-        for (EntityNode v : vertices) {
-            double totalWeight = 0.0;
-            Set<EventEdge> edges = graph.incomingEdgesOf(v);
-            for (EventEdge e : edges)
-                totalWeight += e.weight;
-            for (EventEdge e : edges) {
-                e.weight = e.weight / totalWeight;
-            }
-
-        }
-    }
-
-    protected void fixReputation(String[] highRP) {
-        Map<Long, Double> reputation = getReputation();
-        Set<String> s = new HashSet<>(Arrays.asList(highRP));
-        double high_rep = 0.0;
-        int count = 0;
-        for (EntityNode v : graph.vertexSet()) {
-            if (s.contains(v.getSignature())) {
-                high_rep += reputation.get(v.getID());
-                count++;
-            }
-        }
-        high_rep /= count;
-        for (EntityNode v : graph.vertexSet())
-            v.setReputation(Math.min(1 - (high_rep - reputation.get(v.getID())) / high_rep, 1));
-    }
-
-    protected void extractSuspects(double threshold) {
-        List<EntityNode> vertices = new ArrayList(graph.vertexSet());
-        for (EntityNode v : vertices) {
-            if (v.reputation >= threshold)
-                graph.removeVertex(v);
-        }
-    }
-
     private Map<Long, Double> getReputation() {
         Set<EntityNode> vertexSet = graph.vertexSet();
         Map<Long, Double> map = new HashMap<>();
@@ -1387,10 +1224,6 @@ public class BackwardPropagate_pf {
             map.put(node.getID(), node.getReputation());
         }
         return map;
-    }
-
-    public void exportGraph(String name) {
-        graphIterator.exportGraph(name);
     }
 
     // private void initializeWeights(){
@@ -1508,16 +1341,6 @@ public class BackwardPropagate_pf {
         }
     }
 
-    public void setReliableReputation(String[] strs) {
-        Set<String> set = new HashSet<String>(Arrays.asList(strs));
-        Set<EntityNode> vertexSet = graph.vertexSet();
-        for (EntityNode v : vertexSet) {
-            if (set.contains(v.getSignature())) {
-                v.setReputation(1.0);
-            }
-        }
-    }
-
     private double getTimeWeight(EventEdge edge) {
         // Range: [0, Double.MAX_VALUE]
         double res;
@@ -1545,29 +1368,6 @@ public class BackwardPropagate_pf {
         return 1.0 / (Math.abs(edge.getSize() - detectionSize) + 0.0001);
     }
 
-    public void printWeights() throws Exception {
-        PrintWriter writer = new PrintWriter(String.format("%s.txt", "EdgeWeights"));
-        if (weights == null)
-            System.out.println("weithis is null or size equal to zero");
-        System.out.println(weights.keySet().size());
-        for (Long id : weights.keySet()) {
-            // Map<Long, Double> sub = weights.get(id);
-            // for(Long id2: weights.keySet()){
-            // //writer.println(String.format("%d_%d : %f", id, id2,
-            // weights.get(id).get(id2)));
-            // if(!weights.get(id).get(id2).equals(0.0)) {
-            // writer.println(String.format("%d_%d : %f", id, id2,
-            // weights.get(id).get(id2)));
-            // //System.out.println(String.format("%d_%d : %f", id, id2,
-            // weights.get(id).get(id2)));
-            // }
-            // }
-
-            writer.println(String.format("%d: %f", id, weights.get(id)));
-        }
-        writer.close();
-    }
-
     private BigDecimal getPOITime() { // TODO: enable user-input poi time
         BigDecimal res = BigDecimal.ZERO;
         Set<EventEdge> edges = graph.edgeSet();
@@ -1577,10 +1377,6 @@ public class BackwardPropagate_pf {
             }
         }
         return res;
-    }
-
-    public void printReputation() {
-        graphIterator.printVertexReputation();
     }
 
     private void printEdgeWeights(EventEdge edge) {
@@ -1622,24 +1418,6 @@ public class BackwardPropagate_pf {
         System.out.println();
     }
 
-    public void checkTimeAndAmount() {
-        Set<EventEdge> edges = graph.edgeSet();
-        for (EventEdge edge : edges) {
-            if (edge.getDuration().equals(BigDecimal.ZERO)) {
-                System.out.println("this is because amount is zero");
-                System.out.println(edge.getID());
-                System.out.println(edge.getSource().getSignature());
-                // System.out.println(edge.getSink().getSignature());
-            }
-
-            if (edge.getSize() == 0) {
-                System.out.println("this is because size is zero");
-                System.out.println(edge.getID());
-                System.out.println(edge.getSource().getSignature());
-            }
-        }
-    }
-
     public void initialReputation(String[] signature_high, String[] signature_low) {
         Set<EntityNode> set = graph.vertexSet();
         Set<String> highReputation = new HashSet<String>(Arrays.asList(signature_high));
@@ -1655,137 +1433,6 @@ public class BackwardPropagate_pf {
             }
         }
 
-    }
-
-    public void printConstantPartOfPageRank() {
-        double res = (1 - dumpingFactor) / graph.vertexSet().size();
-        System.out.println("The constant part of Page Rank:" + res);
-    }
-
-    public void checkWeightsAfterCalculation() {
-        Set<EntityNode> vertexSet = graph.vertexSet();
-        for (EntityNode node : vertexSet) {
-            Set<EventEdge> incoming = graph.incomingEdgesOf(node);
-            double res = 0.0;
-            for (EventEdge edge : incoming) {
-                res += edge.weight;
-            }
-            if (incoming.size() != 0 && Math.abs(res - 1.0) >= 0.00001) {
-                System.out.println("Target: " + node.getSignature());
-                for (EventEdge edge : incoming) {
-                    edge.printInfo();
-                }
-                System.out.println("-----------");
-            }
-        }
-    }
-
-    public void onlyPrintHighestWeights(String start) {
-        EntityNode v1 = graphIterator.getGraphVertex(start);
-        Map<Long, EntityNode> map = new HashMap<>();
-        map.put(v1.getID(), new EntityNode(v1));
-
-        DirectedPseudograph<EntityNode, EventEdge> result = new DirectedPseudograph<EntityNode, EventEdge>(
-                EventEdge.class);
-        Queue<EntityNode> queue = new LinkedList<>();
-        queue.offer(v1);
-        while (!queue.isEmpty()) {
-            EntityNode node = queue.poll();
-            Set<EventEdge> incoming = graph.incomingEdgesOf(node);
-            Set<EventEdge> outgoing = graph.outgoingEdgesOf(node);
-            EventEdge incomingHighestWeight = getHighestWeightEdge(incoming);
-            EventEdge outgoingHighestWeight = getHighestWeightEdge(outgoing);
-            if (incomingHighestWeight != null) {
-                if (!map.containsKey(incomingHighestWeight.getSource().getID())) {
-                    map.put(incomingHighestWeight.getSource().getID(),
-                            new EntityNode(incomingHighestWeight.getSource()));
-                    queue.offer(incomingHighestWeight.getSource());
-                }
-                EventEdge incomingCopy = new EventEdge(incomingHighestWeight);
-                EntityNode copy1 = map.get(node.getID());
-                EntityNode copy2 = map.get(incomingHighestWeight.getSource().getID());
-                result.addVertex(copy1);
-                result.addVertex(copy2);
-                result.addEdge(copy2, copy1, incomingCopy);
-            }
-            if (outgoingHighestWeight != null) {
-                if (!map.containsKey(outgoingHighestWeight.getSink().getID())) {
-                    map.put(outgoingHighestWeight.getSink().getID(), new EntityNode(outgoingHighestWeight.getSink()));
-                    queue.offer(outgoingHighestWeight.getSink());
-                }
-                EventEdge outgoingCopy = new EventEdge(outgoingHighestWeight);
-                EntityNode copy1 = map.get(node.getID());
-                EntityNode copy3 = map.get(outgoingCopy.getSink().getID());
-                result.addVertex(copy1);
-                result.addVertex(copy3);
-                result.addEdge(copy1, copy3, outgoingCopy);
-            }
-
-        }
-        System.out.println("dEBUG: " + result.vertexSet().size());
-        IterateGraph iter = new IterateGraph(result);
-        iter.exportGraph("HighestWeight");
-    }
-
-    private EventEdge getHighestWeightEdge(Set<EventEdge> edges) {
-        List<EventEdge> edgeList = new ArrayList<>(edges);
-        if (edgeList.size() == 0)
-            return null;
-        EventEdge res = edgeList.get(0);
-        for (int i = 1; i < edgeList.size(); i++) {
-            if (res.weight < edgeList.get(i).weight) {
-                res = edgeList.get(i);
-            }
-        }
-        return res;
-    }
-
-    private Set<EntityNode> getSources(EntityNode e) {
-        Set<EventEdge> edges = graph.incomingEdgesOf(e);
-        Set<EntityNode> sources = new HashSet<>();
-        for (EventEdge edge : edges) {
-            sources.add(edge.getSource());
-        }
-        assert sources.size() <= edges.size();
-        return sources;
-    }
-
-    public double getAvgWeight() {
-        DescriptiveStatistics stats = new DescriptiveStatistics();
-        for (EventEdge edge : graph.edgeSet()) {
-            stats.addValue(edge.weight);
-        }
-        return stats.getMean();
-    }
-
-    public double getStdWeight() {
-        DescriptiveStatistics stats = new DescriptiveStatistics();
-        for (EventEdge edge : graph.edgeSet()) {
-            stats.addValue(edge.weight);
-        }
-        return stats.getStandardDeviation();
-    }
-
-    // TODO: this needs to be tested
-    public void filterGraphBasedOnAverageWeight(double threshold) {
-        // double averageEdgeWeight = getAvgWeight();
-        // double sd = getStdWeight();
-        List<EventEdge> edges = new ArrayList<>(graph.edgeSet());
-        // double threshold = averageEdgeWeight*percentage;
-        System.out.println("threshold: " + threshold);
-        for (int i = 0; i < edges.size(); i++) {
-
-            if (edges.get(i).weight < threshold) {
-                graph.removeEdge(edges.get(i));
-            }
-        }
-        List<EntityNode> list = new ArrayList<>(graph.vertexSet());
-        for (int i = 0; i < list.size(); i++) {
-            EntityNode v = list.get(i);
-            if (graph.incomingEdgesOf(v).size() == 0 && graph.outgoingEdgesOf(v).size() == 0) {
-                graph.removeVertex(v);
-            }
-        }
     }
 
     // public double OTSUThreshold(){
@@ -1815,92 +1462,10 @@ public class BackwardPropagate_pf {
     // return weights.get(min_i);
     // }
 
-    public void removeIsolatedIslands(String POI) {
-        ConnectivityInspector ci = new ConnectivityInspector(graph);
-        Set verticesConnectedToPOI = ci.connectedSetOf(graphIterator.getGraphVertex(POI));
-        List<EntityNode> list = new ArrayList<>(graph.vertexSet());
-        for (int i = 0; i < list.size(); i++) {
-            EntityNode v = list.get(i);
-            if (!verticesConnectedToPOI.contains(v)) {
-                graph.removeVertex(v);
-            }
-        }
-    }
-
-    public void removeIrrelaventVertices(String POI) {
-        EntityNode POIVertex = graphIterator.getGraphVertex(POI);
-        LinkedList<EventEdge> queue = new LinkedList<>(graph.incomingEdgesOf(POIVertex));
-        Set<EntityNode> ancestors = new HashSet<>();
-        ancestors.add(POIVertex);
-        while (!queue.isEmpty()) {
-            EntityNode v = graph.getEdgeSource(queue.pollLast());
-            ancestors.add(v);
-            for (EventEdge e : graph.incomingEdgesOf(v))
-                if (!ancestors.contains(graph.getEdgeSource(e)))
-                    queue.addFirst(e);
-        }
-
-        queue = new LinkedList<>(graph.outgoingEdgesOf(POIVertex));
-        Set<EntityNode> children = new HashSet<>();
-        children.add(POIVertex);
-        while (!queue.isEmpty()) {
-            EntityNode v = graph.getEdgeTarget(queue.pollLast());
-            children.add(v);
-            for (EventEdge e : graph.outgoingEdgesOf(v))
-                if (!children.contains(graph.getEdgeTarget(e)))
-                    queue.addFirst(e);
-        }
-
-        ancestors.addAll(children);
-        List<EntityNode> list = new ArrayList<>(graph.vertexSet());
-        for (int i = 0; i < list.size(); i++) {
-            EntityNode v = list.get(i);
-            if (!ancestors.contains(v)) {
-                graph.removeVertex(v);
-            }
-        }
-
-    }
-
-    public long getDataAmount(String signature) {
-        EntityNode node = graphIterator.getGraphVertex(signature);
-        long res = 0;
-        Set<EventEdge> edges = graph.incomingEdgesOf(node);
-        for (EventEdge e : edges) {
-            res += e.getSize();
-        }
-        return res;
-    }
-
     /*
      * starts: it will be used to do forward analysis
      * original: original dependency graph
      */
-    public DirectedPseudograph<EntityNode, EventEdge> combineBackwardAndForwardForGivenStarts(List<String> starts,
-            DirectedPseudograph<EntityNode, EventEdge> original) {
-        forwardAnalysis = new ForwardAnalysis(original);
-        BigDecimal POITime = getPOITime();
-        List<DirectedPseudograph<EntityNode, EventEdge>> forwardGraphs = forwardAnalysis
-                .multipleForwardLimitedByPOI(starts, POITime);
-        Map<String, Integer> forwardGraphEdgeUnion = IterateGraph.groupsEdges(forwardGraphs);
-        DirectedPseudograph<EntityNode, EventEdge> backFilterByForwardUion = new DirectedPseudograph<EntityNode, EventEdge>(
-                EventEdge.class);
-        for (EventEdge edge : graph.edgeSet()) {
-            String signatureOfCurrentEdge = IterateGraph.convertEdgeToString(edge);
-            if (!forwardGraphEdgeUnion.containsKey(signatureOfCurrentEdge)) {
-                continue;
-            }
-            backFilterByForwardUion.addVertex(edge.getSource());
-            backFilterByForwardUion.addVertex(edge.getSink());
-            backFilterByForwardUion.addEdge(edge.getSource(), edge.getSink(), edge);
-        }
-        Map<String, Double> graphReputation = IterateGraph.getNodeReputation(graph);
-        for (EntityNode node : backFilterByForwardUion.vertexSet()) {
-            node.reputation = graphReputation.get(node.getSignature());
-        }
-        return backFilterByForwardUion;
-    }
-
     // TODO: 9/19/2019 This method should be based on the reputation ranking, for
     // now we need manual inputs.
     public List<List<String>> getForwardStarts() {
@@ -2121,69 +1686,6 @@ public class BackwardPropagate_pf {
             }
         }
         return filtered;
-    }
-
-    public DirectedPseudograph<EntityNode, EventEdge> combineBackwardAndForwardForGivenStart(String start,
-            DirectedPseudograph<EntityNode, EventEdge> original) {
-        forwardAnalysis = new ForwardAnalysis(original);
-        BigDecimal POITime = getPOITime();
-        DirectedPseudograph<EntityNode, EventEdge> forwardGraph = forwardAnalysis.forwardLimitedByTime(start, POITime);
-        List<DirectedPseudograph<EntityNode, EventEdge>> forwardGraphs = new ArrayList<>();
-        forwardGraphs.add(forwardGraph);
-        Map<String, Integer> forwardGraphEdgeUnion = IterateGraph.groupsEdges(forwardGraphs);
-        DirectedPseudograph<EntityNode, EventEdge> backFilterByForwardUion = new DirectedPseudograph<EntityNode, EventEdge>(
-                EventEdge.class);
-        for (EventEdge edge : graph.edgeSet()) {
-            String signatureOfCurrentEdge = IterateGraph.convertEdgeToString(edge);
-            if (!forwardGraphEdgeUnion.containsKey(signatureOfCurrentEdge)) {
-                continue;
-            }
-            backFilterByForwardUion.addVertex(edge.getSource());
-            backFilterByForwardUion.addVertex(edge.getSink());
-            backFilterByForwardUion.addEdge(edge.getSource(), edge.getSink(), edge);
-        }
-        Map<String, Double> graphReputation = IterateGraph.getNodeReputation(graph);
-        for (EntityNode node : backFilterByForwardUion.vertexSet()) {
-            node.reputation = graphReputation.get(node.getSignature());
-        }
-        return backFilterByForwardUion;
-    }
-
-    public void PageRankIterationOneTimeUpdate(String[] highRP, String[] midRP, String[] lowRP, String detection) {
-        double alarmlevel = 0.85;
-        Set<EntityNode> vertexSet = graph.vertexSet();
-        Set<String> sources = new HashSet<>(Arrays.asList(highRP));
-        sources.addAll(Arrays.asList(lowRP));
-        // We don't need special treat of library any more.
-        // sources.addAll(Arrays.asList(midRP));
-        double fluctuation = 1.0;
-        int iterTime = 0;
-        while (fluctuation >= 1e-5) {
-            double culmativediff = 0.0;
-            iterTime++;
-            Map<Long, Double> preReputation = getReputation();
-            for (EntityNode v : vertexSet) {
-                if (sources.contains(v.getSignature()))
-                    continue;
-                Set<EventEdge> edges = graph.outgoingEdgesOf(v);
-                double rep = 0.0;
-                for (EventEdge edge : edges) {
-                    EntityNode sink = edge.getSink();
-                    rep += (preReputation.get(sink.getID()) * edge.weight);
-                }
-                // rep = rep*alarmlevel+0.5*(1-alarmlevel);
-                if (v.reputation == 0.0) {
-                    culmativediff += Math.abs(rep - preReputation.get(v.getID()));
-                    v.setReputation(rep);
-                }
-            }
-            fluctuation = culmativediff;
-            if (iterTime <= 20) {
-                IterateGraph.printReputation(graph, iterTime);
-            }
-        }
-        System.out
-                .println(String.format("After %d times iteration, the reputation of each vertex is stable", iterTime));
     }
 
     private double[] getNCoefficient(int n) {
