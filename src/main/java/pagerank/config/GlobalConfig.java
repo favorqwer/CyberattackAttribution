@@ -65,7 +65,7 @@ public final class GlobalConfig {
         this.ptonSystemCall = getArray(props, "syscall.pton", DEFAULT_PTON_SYSTEM_CALL);
         this.ntopSystemCall = getArray(props, "syscall.ntop", DEFAULT_NTOP_SYSTEM_CALL);
         this.weightMode = getString(props, "weight_mode", "clusterall");
-        this.cprMode = getString(props, "cpr_mode", "window");
+        this.cprMode = getString(props, "cpr_mode", "windowed_sequence");
         this.cprTimeWindow = getDouble(props, "cpr_time_window", 10.0d);
         this.llmEnabled = Boolean.parseBoolean(getString(props, "llm_enabled", "false"));
         this.baseUrl = getString(props, "base_url", "");

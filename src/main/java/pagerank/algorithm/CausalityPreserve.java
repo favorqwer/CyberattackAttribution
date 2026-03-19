@@ -34,11 +34,13 @@ import java.util.*;
  * 1. mergeConsiderTimeAndType: 考虑时间和事件类型
  * 2. mergeConsiderType: 只考虑事件类型
  * 3. mergeWithoutConsideringTimeAndType: 不考虑时间和类型（完全合并）
- * 
- * @author fang
- * @date 2018/3/23
  */
 public class CausalityPreserve {
+    public static final String MODE_CAUSAL_STRICT = "causal_strict";
+    public static final String MODE_TYPE_AGGREGATION = "type_aggregation";
+    public static final String MODE_ENDPOINT_AGGREGATION = "endpoint_aggregation";
+    public static final String MODE_WINDOWED_SEQUENCE = "windowed_sequence";
+
     // 输入的依赖图（后向切片后的子图）
     DirectedPseudograph<EntityNode, EventEdge> input;
     // 图遍历工具
@@ -56,32 +58,32 @@ public class CausalityPreserve {
         this.input = (DirectedPseudograph<EntityNode, EventEdge>) input.clone();
     }
 
-    /* Provide three different kind merge methods */
-
     /**
-     * CPR - 因果保持压缩主方法
-     * 
-     * @param choose 压缩模式选择：
-     *               1: 考虑时间和事件类型
-     *               2: 只考虑事件类型
-     *               3: 不考虑时间和类型
+     * 四种CPR模式统一入口。
+     *
+     * @param mode CPR模式名称
+     * @param windowSeconds 时间窗口（仅windowed_sequence模式生效）
      * @return 压缩后的图
      */
-    public DirectedPseudograph<EntityNode, EventEdge> CPR(int choose) {
-        System.out.println("CPR invoked: " + choose);
-        if (choose < 1 || choose > 3) {
-            String usage = "The legal parameter:(int) 1,2,3\n" +
-                    "Method 1: this merge method considers about time and event type\n" +
-                    "Method 2: this merge method only considers event type\n" +
-                    "Method 3: thie merge method doesn't consider about time and event type";
-            throw new IllegalArgumentException(usage);
-        }
-        if (choose == 1) {
-            return mergeConsiderTimeAndType();
-        } else if (choose == 2) {
-            return mergeConsiderType();
-        } else {
-            return mergeWithoutConsideringTimeAndType();
+    public DirectedPseudograph<EntityNode, EventEdge> applyMode(String mode, double windowSeconds) {
+        String normalized = mode == null ? MODE_WINDOWED_SEQUENCE : mode.trim().toLowerCase(Locale.ROOT);
+        switch (normalized) {
+            case MODE_CAUSAL_STRICT:
+                return applyCausalStrictMode();
+            case MODE_TYPE_AGGREGATION:
+                return applyTypeAggregationMode();
+            case MODE_ENDPOINT_AGGREGATION:
+                return applyEndpointAggregationMode();
+            case MODE_WINDOWED_SEQUENCE:
+                return applyWindowedSequenceMode(windowSeconds);
+            default:
+                throw new IllegalArgumentException(
+                        "Unsupported cpr_mode: " + mode
+                                + ". Supported values: "
+                                + MODE_CAUSAL_STRICT + ", "
+                                + MODE_TYPE_AGGREGATION + ", "
+                                + MODE_ENDPOINT_AGGREGATION + ", "
+                                + MODE_WINDOWED_SEQUENCE);
         }
     }
 
@@ -91,7 +93,7 @@ public class CausalityPreserve {
      * consider the time window and event type. For more detail, read the Professor
      * Xiao's paper.
      */
-    private DirectedPseudograph<EntityNode, EventEdge> mergeConsiderTimeAndType() {
+    private DirectedPseudograph<EntityNode, EventEdge> applyCausalStrictMode() {
         Set<EventEdge> edgeSet = input.edgeSet();
         List<EventEdge> edgeList = new LinkedList<>(edgeSet);
         Collections.sort(edgeList, (a, b) -> a.getStartTime().compareTo(b.getStartTime()));
@@ -140,7 +142,7 @@ public class CausalityPreserve {
      */
     // build a new graph rather than deleting edges in the original one, better
     // performance
-    public DirectedPseudograph<EntityNode, EventEdge> mergeEdgeFallInTheRange2(double range) {
+    public DirectedPseudograph<EntityNode, EventEdge> applyWindowedSequenceMode(double range) {
         DirectedPseudograph<EntityNode, EventEdge> merged = new DirectedPseudograph<EntityNode, EventEdge>(
                 EventEdge.class);
         for (EntityNode n : input.vertexSet())
@@ -199,7 +201,7 @@ public class CausalityPreserve {
 
     // Fang's comment: merge all the edges, don't care about time window and event
     // type
-    private DirectedPseudograph<EntityNode, EventEdge> mergeWithoutConsideringTimeAndType() {
+    private DirectedPseudograph<EntityNode, EventEdge> applyEndpointAggregationMode() {
         Map<EntityNode, Map<EntityNode, EventEdge>> map = new HashMap<>();
         Set<EventEdge> edgeSet = input.edgeSet();
         List<EventEdge> edgeList = new ArrayList<>(edgeSet);
@@ -230,7 +232,7 @@ public class CausalityPreserve {
      * the edges having the same event type
      * Don't care about time window.
      */
-    private DirectedPseudograph<EntityNode, EventEdge> mergeConsiderType() {
+    private DirectedPseudograph<EntityNode, EventEdge> applyTypeAggregationMode() {
 
         Set<EventEdge> edgeSet = input.edgeSet();
         List<EventEdge> edgeList = new LinkedList<>(edgeSet);

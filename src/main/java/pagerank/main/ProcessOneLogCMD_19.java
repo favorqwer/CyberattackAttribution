@@ -126,32 +126,32 @@ public class ProcessOneLogCMD_19 {
             // 这步是很多 provenance 压缩论文（如 ProvTracer、MPI、OmegaLog 等）都会做的操作。
             CausalityPreserve CPR = new CausalityPreserve(backTrack.afterBackTrack);
             start = System.currentTimeMillis();
-            String cprModeNormalized = cprMode == null ? "window" : cprMode.trim().toLowerCase(Locale.ROOT);
+            String cprModeNormalized = cprMode == null ? CausalityPreserve.MODE_WINDOWED_SEQUENCE
+                    : cprMode.trim().toLowerCase(Locale.ROOT);
             switch (cprModeNormalized) {
-                case "choose1":
-                case "1":
-                    CPR.CPR(1);
-                    System.out.println("CPR mode choose=1 (consider time and event type)");
+                case CausalityPreserve.MODE_CAUSAL_STRICT:
+                    CPR.applyMode(CausalityPreserve.MODE_CAUSAL_STRICT, cprTimeWindow);
+                    System.out.println("CPR mode causal_strict (consider time and event type)");
                     break;
-                case "choose2":
-                case "2":
-                    CPR.CPR(2);
-                    System.out.println("CPR mode choose=2 (consider event type only)");
+                case CausalityPreserve.MODE_TYPE_AGGREGATION:
+                    CPR.applyMode(CausalityPreserve.MODE_TYPE_AGGREGATION, cprTimeWindow);
+                    System.out.println("CPR mode type_aggregation (consider event type only)");
                     break;
-                case "choose3":
-                case "3":
-                    CPR.CPR(3);
-                    System.out.println("CPR mode choose=3 (ignore time and event type)");
+                case CausalityPreserve.MODE_ENDPOINT_AGGREGATION:
+                    CPR.applyMode(CausalityPreserve.MODE_ENDPOINT_AGGREGATION, cprTimeWindow);
+                    System.out.println("CPR mode endpoint_aggregation (ignore time and event type)");
                     break;
-                case "window":
-                    CPR.mergeEdgeFallInTheRange2(cprTimeWindow);
-                    System.out.println("CPR mode window (mergeEdgeFallInTheRange2), time window is :" + cprTimeWindow + "(s)");
+                case CausalityPreserve.MODE_WINDOWED_SEQUENCE:
+                    CPR.applyMode(CausalityPreserve.MODE_WINDOWED_SEQUENCE, cprTimeWindow);
+                    System.out.println("CPR mode windowed_sequence, time window is :" + cprTimeWindow + "(s)");
                     break;
                 default:
-                    System.out.println("Unknown cpr_mode: " + cprMode + ", fallback to window mode");
-                    CPR.mergeEdgeFallInTheRange2(cprTimeWindow);
-                    System.out.println("CPR mode window (mergeEdgeFallInTheRange2), time window is :" + cprTimeWindow + "(s)");
-                    break;
+                    throw new IllegalArgumentException("Unsupported cpr_mode: " + cprMode
+                            + ". Supported values: "
+                            + CausalityPreserve.MODE_CAUSAL_STRICT + ", "
+                            + CausalityPreserve.MODE_TYPE_AGGREGATION + ", "
+                            + CausalityPreserve.MODE_ENDPOINT_AGGREGATION + ", "
+                            + CausalityPreserve.MODE_WINDOWED_SEQUENCE);
             }
             end = System.currentTimeMillis();
             timeCost = getTimeCost(start, end);
