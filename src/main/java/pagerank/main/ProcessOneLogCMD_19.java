@@ -153,11 +153,11 @@ public class ProcessOneLogCMD_19 {
                     break;
                 case CausalityPreserve.MODE_FD:
                     CPR.applyMode(CausalityPreserve.MODE_FD, cprTimeWindow);
-                    System.out.println("CPR mode fd (full dependence preserving reduction)");
+                    System.out.println("CPR mode fd (paper-aligned FD: REO + RNO + 2-node CCO)");
                     break;
                 case CausalityPreserve.MODE_SD:
                     CPR.applyMode(CausalityPreserve.MODE_SD, cprTimeWindow);
-                    System.out.println("CPR mode sd (source dependence preserving reduction)");
+                    System.out.println("CPR mode sd (paper-aligned SD: FD reductions + source-set filtering)");
                     break;
                 default:
                     throw new IllegalArgumentException("Unsupported cpr_mode: " + cprMode

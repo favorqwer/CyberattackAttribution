@@ -121,6 +121,11 @@ public class CausalityPreserve {
      * 1) FD: 按时间顺序处理事件，若当前图中已存在 u->v 路径，则丢弃该边（REO* 风格冗余消除）。
      * 2) SD: 在 FD 基础上再做源依赖过滤，若 Src(u) ⊆ Src(v) 则丢弃该边。
      */
+    // Paper-aligned FD/SD reduction adapted to this project:
+    // FD = REO + RNO + 2-node CCO; SD = FD + source-set filtering.
+    // The internal decision logic uses lightweight version states, while the
+    // exported graph keeps the original EntityNode/EventEdge shape so downstream
+    // weighting and provenance analysis continue to work unchanged.
     private DirectedPseudograph<EntityNode, EventEdge> applyDependencePreservingReduction(boolean sourceDependence) {
         DirectedPseudograph<EntityNode, EventEdge> reduced = new DirectedPseudograph<>(EventEdge.class);
         for (EntityNode n : input.vertexSet()) {
@@ -133,9 +138,14 @@ public class CausalityPreserve {
             if (startCmp != 0) {
                 return startCmp;
             }
-            return a.getEndTime().compareTo(b.getEndTime());
+            int endCmp = a.getEndTime().compareTo(b.getEndTime());
+            if (endCmp != 0) {
+                return endCmp;
+            }
+            return Long.compare(a.getID(), b.getID());
         });
 
+        Map<EntityNode, VersionState> latestVersions = initializeVersionStates(input.vertexSet());
         Map<EntityNode, Set<EntityNode>> sourceSets = sourceDependence
                 ? initializeSourceSets(input)
                 : Collections.emptyMap();
@@ -143,25 +153,52 @@ public class CausalityPreserve {
         for (EventEdge edge : orderedEdges) {
             EntityNode source = edge.getSource();
             EntityNode sink = edge.getSink();
+            VersionState sourceVersion = latestVersions.get(source);
+            VersionState sinkVersion = latestVersions.get(sink);
+            boolean reducible = isDependenceReductionEligible(edge);
 
             if (source.equals(sink)) {
+                reduced.addEdge(source, sink, cloneEdge(edge));
                 continue;
             }
 
-            if (hasPath(reduced, source, sink)) {
+            if (reducible && formsTwoNodeCycle(sourceVersion, sinkVersion)) {
                 continue;
             }
 
-            if (sourceDependence) {
+            if (reducible) {
+                RelationKey relationKey = new RelationKey(sink, edge.getType());
+                EventEdge representative = sourceVersion.getReducibleEdge(relationKey);
+                if (representative != null) {
+                    representative.merge(edge);
+                    continue;
+                }
+            }
+
+            if (sourceDependence && reducible) {
                 Set<EntityNode> sourceAncestors = sourceSets.computeIfAbsent(source, k -> new HashSet<>());
                 Set<EntityNode> sinkAncestors = sourceSets.computeIfAbsent(sink, k -> new HashSet<>());
                 if (sinkAncestors.containsAll(sourceAncestors)) {
                     continue;
                 }
-                sinkAncestors.addAll(sourceAncestors);
             }
 
-            reduced.addEdge(source, sink, cloneEdge(edge));
+            VersionState targetVersion = advanceTargetVersion(sinkVersion, edge);
+            latestVersions.put(sink, targetVersion);
+
+            EventEdge keptEdge = cloneEdge(edge);
+            reduced.addEdge(source, sink, keptEdge);
+            sourceVersion.addOutgoing(targetVersion, sink);
+
+            if (reducible) {
+                sourceVersion.registerReducibleEdge(new RelationKey(sink, edge.getType()), keptEdge);
+            }
+
+            if (sourceDependence) {
+                Set<EntityNode> sourceAncestors = sourceSets.computeIfAbsent(source, k -> new HashSet<>());
+                Set<EntityNode> sinkAncestors = sourceSets.computeIfAbsent(sink, k -> new HashSet<>());
+                sinkAncestors.addAll(sourceAncestors);
+            }
         }
 
         afterMerge = reduced;
@@ -181,31 +218,31 @@ public class CausalityPreserve {
         return sourceSets;
     }
 
-    private boolean hasPath(DirectedPseudograph<EntityNode, EventEdge> graph,
-            EntityNode source,
-            EntityNode sink) {
-        if (source.equals(sink)) {
-            return true;
+    private Map<EntityNode, VersionState> initializeVersionStates(Set<EntityNode> nodes) {
+        Map<EntityNode, VersionState> latestVersions = new HashMap<>();
+        for (EntityNode node : nodes) {
+            latestVersions.put(node, new VersionState(node, BigDecimal.ZERO));
+        }
+        return latestVersions;
+    }
+
+    private boolean isDependenceReductionEligible(EventEdge edge) {
+        return !(edge.getSource().isProcessNode() && edge.getSink().isProcessNode());
+    }
+
+    private boolean formsTwoNodeCycle(VersionState sourceVersion, VersionState sinkVersion) {
+        return sinkVersion.directlyTargets(sourceVersion.entity);
+    }
+
+    private VersionState advanceTargetVersion(VersionState currentVersion, EventEdge edge) {
+        if (!currentVersion.hasDescendants()) {
+            currentVersion.extendTo(edge.getEndTime());
+            return currentVersion;
         }
 
-        Set<EntityNode> visited = new HashSet<>();
-        Deque<EntityNode> queue = new ArrayDeque<>();
-        queue.add(source);
-        visited.add(source);
-
-        while (!queue.isEmpty()) {
-            EntityNode current = queue.removeFirst();
-            for (EventEdge edge : graph.outgoingEdgesOf(current)) {
-                EntityNode next = edge.getSink();
-                if (next.equals(sink)) {
-                    return true;
-                }
-                if (visited.add(next)) {
-                    queue.addLast(next);
-                }
-            }
-        }
-        return false;
+        VersionState nextVersion = new VersionState(currentVersion.entity, edge.getEndTime());
+        currentVersion.addVersionSuccessor(nextVersion);
+        return nextVersion;
     }
 
     private EventEdge cloneEdge(EventEdge edge) {
@@ -669,6 +706,79 @@ public class CausalityPreserve {
         @Override
         public int hashCode() {
             return Objects.hash(source, sink, event);
+        }
+    }
+
+    private static final class RelationKey {
+        private final EntityNode sink;
+        private final String type;
+
+        private RelationKey(EntityNode sink, String type) {
+            this.sink = sink;
+            this.type = type;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof RelationKey)) {
+                return false;
+            }
+            RelationKey that = (RelationKey) o;
+            return Objects.equals(sink, that.sink) && Objects.equals(type, that.type);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(sink, type);
+        }
+    }
+
+    private static final class VersionState {
+        private final EntityNode entity;
+        private final BigDecimal start;
+        private BigDecimal end;
+        private final Set<VersionState> descendants = new HashSet<>();
+        private final Set<EntityNode> directTargets = new HashSet<>();
+        private final Map<RelationKey, EventEdge> reducibleEdges = new HashMap<>();
+
+        private VersionState(EntityNode entity, BigDecimal timepoint) {
+            this.entity = entity;
+            this.start = timepoint;
+            this.end = timepoint;
+        }
+
+        private boolean hasDescendants() {
+            return !descendants.isEmpty();
+        }
+
+        private void extendTo(BigDecimal timestamp) {
+            if (timestamp.compareTo(end) > 0) {
+                end = timestamp;
+            }
+        }
+
+        private void addVersionSuccessor(VersionState nextVersion) {
+            descendants.add(nextVersion);
+        }
+
+        private void addOutgoing(VersionState targetVersion, EntityNode targetEntity) {
+            descendants.add(targetVersion);
+            directTargets.add(targetEntity);
+        }
+
+        private boolean directlyTargets(EntityNode targetEntity) {
+            return directTargets.contains(targetEntity);
+        }
+
+        private EventEdge getReducibleEdge(RelationKey key) {
+            return reducibleEdges.get(key);
+        }
+
+        private void registerReducibleEdge(RelationKey key, EventEdge edge) {
+            reducibleEdges.putIfAbsent(key, edge);
         }
     }
 
