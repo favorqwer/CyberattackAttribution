@@ -1,7 +1,5 @@
 package pagerank.entity;
 
-import java.util.Map;
-
 /**
  * EntityNode - 图节点类（实体节点）
  * 
@@ -15,7 +13,6 @@ import java.util.Map;
  * - ID: 实体唯一标识符
  * - signature: 实体签名（用于显示和查找）
  * - reputation: 恶意度分数（0.0-1.0，1.0表示可信，0.0表示可疑）
- * - attributes: 其他属性（可选）
  * 
  * @author fang
  * @date 2018/3/21
@@ -34,8 +31,6 @@ public class EntityNode{
     private String signature;
     // 恶意度分数：0.0（可疑）~ 1.0（可信）
     public double reputation;
-    // 其他属性（可选）
-    public Map<String, String> attributes;
 
     /**
      * 构造函数 - 从文件实体创建节点
@@ -104,16 +99,6 @@ public class EntityNode{
     }
 
     /*this is for the test case */
-    public EntityNode(long id, double reputation, Map<String, String>attributes){
-        this.ID = id;
-        this.reputation = reputation;
-        f = null;
-        p = null;
-        n = null;
-        this.attributes = attributes;
-        signature = attributes.get("name");
-    }
-
     public EntityNode(long id, double reputation, String signature){
         this.ID = id;
         this.reputation = reputation;

@@ -9,15 +9,13 @@ public class Event implements Serializable {
     private String startMs;
     private String endS;
     private String endMs;
-    private long ID;
 
     public Event(){}
 
-    public Event(String type, String startS, String startMs,long ID){
+    public Event(String type, String startS, String startMs){
         this.type = type;
         this.startS = startS;
         this.startMs = startMs;
-        this.ID = ID;
     }
 
     public String getType(){
@@ -44,10 +42,6 @@ public class Event implements Serializable {
 
     public String getEnd(){return String.valueOf(endS)+"."+String.valueOf(endMs);}
 
-    public long getUniqID(){
-        return ID;
-    }
-
     @Override
     public String toString() {
         return "Event{" +
@@ -56,12 +50,11 @@ public class Event implements Serializable {
                 ", startMs='" + startMs + '\'' +
                 ", endS='" + endS + '\'' +
                 ", endMs='" + endMs + '\'' +
-                ", ID=" + ID +
                 '}';
     }
 
     @Override
     public Event clone(){
-        return new Event(type,startS,startMs,ID);
+        return new Event(type,startS,startMs);
     }
 }

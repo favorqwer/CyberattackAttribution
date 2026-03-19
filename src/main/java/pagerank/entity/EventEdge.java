@@ -22,7 +22,7 @@ public class EventEdge{
     public EventEdge(PtoFEvent pf){
         source = new EntityNode(pf.getSource());
         sink = new EntityNode(pf.getSink());
-        id = pf.getUniqID();
+        id = 0;
         startTime = new BigDecimal(pf.getStart());
         endTime = new BigDecimal(pf.getEnd());
         type = pf.getType();
@@ -33,7 +33,7 @@ public class EventEdge{
     public EventEdge(PtoPEvent pp){
         source = new EntityNode(pp.getSource());
         sink = new EntityNode(pp.getSink());
-        id = pp.getUniqID();
+        id = 0;
         startTime = new BigDecimal(pp.getStart());
         endTime = new BigDecimal(pp.getEnd());
         type = pp.getType();
@@ -44,13 +44,12 @@ public class EventEdge{
     public EventEdge(FtoPEvent fp){
         source = new EntityNode(fp.getSource());
         sink = new EntityNode(fp.getSink());
-        id = fp.getUniqID();
+        id = 0;
         startTime = new BigDecimal(fp.getStart());
         //System.out.println(fp.getEnd());
         try {
             endTime = new BigDecimal(fp.getEnd());
         }catch (Exception e){
-            System.out.println(fp.getUniqID());
             System.out.println(fp.getSource());
             System.out.println(fp.getSink());
         }
@@ -63,14 +62,13 @@ public class EventEdge{
     public EventEdge(NtoPEvent np){
         source = new EntityNode(np.getSource());
         sink = new EntityNode(np.getSink());
-        id = np.getUniqID();
+        id = 0;
         startTime = new BigDecimal(np.getStart());
         try {
             endTime = new BigDecimal(np.getEnd());
         }catch (Exception e){
             System.out.println(np.getSource());
             System.out.println(np.getSink());
-            System.out.println(np.getUniqID());
         }
         type = np.getType();
         event = np.getEvent();
@@ -80,12 +78,11 @@ public class EventEdge{
     public EventEdge(PtoNEvent pn){
         source = new EntityNode(pn.getSource());
         sink = new EntityNode(pn.getSink());
-        id = pn.getUniqID();
+        id = 0;
         startTime = new BigDecimal(pn.getStart());
         try {
             endTime = new BigDecimal(pn.getEnd());
         }catch (Exception e){
-            System.out.println(pn.getUniqID());
             System.out.println(pn.getSource());
             System.out.println(pn.getEvent());
             System.out.println(pn.getSink());

@@ -6,49 +6,18 @@ package pagerank.entity;
  */
 public class Process extends Entity {
     private String pid;
-    private String uid;
-    private String groupID;
-    private String location;
     private String name;
 
     public Process(){}
 
-    public Process(double reputation,long id,int hopCount,String pid, String uid, String groupID, String location,
-                   String time1, String stime,String name,long uniqID){
-        super(reputation,id,hopCount,time1,stime,uniqID);
+    public Process(double reputation, String pid, String name, long uniqID){
+        super(reputation, uniqID);
         this.pid = pid;
-        this.uid = uid;                                //can't get now
-        this.groupID = groupID;                        //can't get now
-        this.location = location;
         this.name = name;
-
-    }
-
-    public Process(long id,int hopCount,String pid, String uid, String location,long uniqID){
-        super(id,hopCount,uniqID);
-        if(pid.startsWith("=")){
-            pid = pid.substring(1);
-        }
-        this.pid = pid;
-        this.uid = uid;
-        this.location = location;
-        groupID = null;
     }
 
     public String getPid(){
         return pid;
-    }
-
-    public String getUid(){
-        return uid;
-    }
-
-    public String getGroupID(){
-        return groupID;
-    }
-
-    public String getLocation(){
-        return location;
     }
 
     public String getName(){return name;}
@@ -65,14 +34,12 @@ public class Process extends Entity {
         Process process = (Process) o;
 
         if (pid != null ? !pid.equals(process.pid) : process.pid != null) return false;
-        if (uid != null ? !uid.equals(process.uid) : process.uid != null) return false;
         return name != null ? name.equals(process.name) : process.name == null;
     }
 
     @Override
     public int hashCode() {
         int result = pid != null ? pid.hashCode() : 0;
-        result = 31 * result + (uid != null ? uid.hashCode() : 0);
         result = 31 * result + (name != null ? name.hashCode() : 0);
         return result;
     }

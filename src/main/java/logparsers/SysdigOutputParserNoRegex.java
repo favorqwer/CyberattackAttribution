@@ -125,7 +125,7 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
 
             if(!f.getPath().equals("<NA>")){
                 FtoPEvent fp = new FtoPEvent(timestampsStart[0],timestampsStart[1],
-                        f,pEnd,"execve",0,0);
+                        f,pEnd,"execve",0);
 
                 fp.setEndTime(timestampStart);
                 fpEvent.put(key,fp);
@@ -137,19 +137,15 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
                 String pidParent = mParent.group("parentPID");
                 String nameParent = mParent.group("parent");
                 String keyParent = pidParent+nameParent;
-                Process parent = processes.computeIfAbsent(keyParent,k ->new Process(repu, -1, hops, pidParent,
-                        null, null, null,
-                        timestampsStart[0], timestampsStart[1],
-                        nameParent, UID++));
-                PtoPEvent forwardLink = new PtoPEvent(timestampsStart[0],timestampsStart[1],parent,pEnd,"execve",
-                        0);
+                Process parent = processes.computeIfAbsent(keyParent,
+                        k -> new Process(repu, pidParent, nameParent, UID++));
+                PtoPEvent forwardLink = new PtoPEvent(timestampsStart[0],timestampsStart[1],parent,pEnd,"execve");
                 forwardLink.setEndTime(timestampEnd);
 
                 ppEvent.put(key,forwardLink);
                 forwardFlow.put(keyParent,forwardLink);
 
-                PtoPEvent backLink = new PtoPEvent(timestampsStart[0], timestampsStart[1], pEnd,parent, "execve",
-                        0);
+                PtoPEvent backLink = new PtoPEvent(timestampsStart[0], timestampsStart[1], pEnd,parent, "execve");
                 backLink.setEndTime(timestampEnd);
 
                 backFlow.put(mEnd.get("pid")+mEnd.get("process"),backLink);
@@ -173,11 +169,11 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
             String[] timestamps = timestamp.split("\\.");
 
             NtoPEvent np = new NtoPEvent(timestamps[0],timestamps[1],
-                    n,p,mEnd.get("event"),0,0);
+                    n,p,mEnd.get("event"),0);
             np.setEndTime(timestamp);
 
             PtoNEvent pn = new PtoNEvent(timestamps[0],timestamps[1],
-                    p,n,mEnd.get("event"),0,0);
+                    p,n,mEnd.get("event"),0);
             pn.setEndTime(timestamp);
 
             npEvent.put(key,np);
@@ -198,7 +194,7 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
             NetworkEntity n = (NetworkEntity)entitiesEnd[1];
 
             NtoPEvent np = new NtoPEvent(timestampsStart[0],timestampsStart[1],
-                    n,p,mStart.get("event"),0,0);
+                    n,p,mStart.get("event"),0);
             np.setEndTime(timestampEnd);
             npEvent.put(key,np);
         });
@@ -227,17 +223,17 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
             Process p = (Process)entitiesStart[0];
             String key = timestampStart+":"+event+":"+cwd;
 
-            FileEntity oldFile = files.computeIfAbsent(oldPath ,k -> new FileEntity(repu, 0L, hops, timestampsStart[0],
-                    timestampsStart[1], null, null, realOldPath, UID++));
+            FileEntity oldFile = files.computeIfAbsent(oldPath,
+                    k -> new FileEntity(repu, realOldPath, UID++));
             FtoPEvent fp = new FtoPEvent(timestampsStart[0],timestampsStart[1],
-                    oldFile, p, mStart.get("event"),0,0);
+                    oldFile, p, mStart.get("event"),0);
             fp.setEndTime(timestampEnd);
             fpEvent.put(key,fp);
 
-            FileEntity newFile = files.computeIfAbsent(newPath ,k -> new FileEntity(repu, 0L, hops, timestampsStart[0],
-                    timestampsStart[1], null, null, realNewPath, UID++));
+            FileEntity newFile = files.computeIfAbsent(newPath,
+                    k -> new FileEntity(repu, realNewPath, UID++));
             PtoFEvent pf = new PtoFEvent(timestampsStart[0],timestampsStart[1],
-                    p, newFile, mStart.get("event"),0,0);
+                    p, newFile, mStart.get("event"),0);
             pf.setEndTime(timestampEnd);
             pfEvent.put(key,pf);
         });
@@ -364,7 +360,7 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         if(size!=-1L){
 
             PtoFEvent pf = new PtoFEvent(timestampsStart[0],timestampsStart[1],
-                    p,f,mStart.get("event"),size,0);
+                    p,f,mStart.get("event"),size);
             pf.setEndTime(timestampEnd);
             pfEvent.put(key,pf);
         }
@@ -387,7 +383,7 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         long size = Utils.extractSize(args);
         if(size!=-1L){
             FtoPEvent fp = new FtoPEvent(timestampsStart[0],timestampsStart[1],
-                    f,p,mStart.get("event"),size,0);
+                    f,p,mStart.get("event"),size);
             fp.setEndTime(timestampEnd);
             fpEvent.put(key,fp);
         }
@@ -410,7 +406,7 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         long size = Utils.extractSize(args);
         if(size!=-1L){
             PtoNEvent pn = new PtoNEvent(timestampsStart[0],timestampsStart[1],
-                    p,n,mStart.get("event"),size,0);
+                    p,n,mStart.get("event"),size);
             pn.setEndTime(timestampEnd);
             pnEvent.put(key,pn);
         }
@@ -433,7 +429,7 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         long size = Utils.extractSize(args);
         if(size!=-1L){
             NtoPEvent np = new NtoPEvent(timestampsStart[0],timestampsStart[1],
-                    n,p,mStart.get("event"),size,0);
+                    n,p,mStart.get("event"),size);
             np.setEndTime(timestampEnd);
             npEvent.put(key,np);
         }
@@ -445,13 +441,11 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         Entity[] res = new Entity[2];
 
         // ==================== 第一部分：提取进程实体（永远有）================
-        long id = 0L;
         String pid = m.pid;
         String process = m.process;
         String processKey = pid+process;
-        String[] timestamp = splitTimestamp(m.timestamp);
-        res[0] = processes.computeIfAbsent(processKey, key -> new Process(repu, id, hops, pid,
-                null, null, null, timestamp[0], timestamp[1], process, UID++));
+        res[0] = processes.computeIfAbsent(processKey,
+                key -> new Process(repu, pid, process, UID++));
         // 至此，res[0] 一定是 Process 对象，且全局唯一（同一个 pid+name 的进程只会创建一个节点）
 
 
@@ -464,14 +458,12 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
         // ------------------- 情况1：是普通文件操作（open/write/read/close/mmap...）----------------
         if(file_socket.containsKey("path")) {
             String path = file_socket.get("path");
-            res[1] = files.computeIfAbsent(path ,key -> new FileEntity(repu, id, hops, timestamp[0],
-                    timestamp[1], null, null, path, UID++));
+            res[1] = files.computeIfAbsent(path, key -> new FileEntity(repu, path, UID++));
 
         // ------------------- 情况2：是 execve/clone/vfork 等，参数带 filename= ----------------
         }else if(process_file != null) {
             res[1] = files.computeIfAbsent(process_file,
-                    key -> new FileEntity(repu, id, hops, timestamp[0],
-                            timestamp[1], null, null, process_file, UID++));
+                    key -> new FileEntity(repu, process_file, UID++));
 
         // ------------------- 情况3：是网络操作（connect/sendto/recvfrom/accept...）-------------
         }else if(file_socket.containsKey("sip") && file_socket.containsKey("sport") &&
@@ -482,7 +474,7 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
             String desPort = file_socket.get("dport");
 
             res[1] = networks.computeIfAbsent(sourceIP+":"+sourcePort+"->"+ desIP+":"+desPort,
-                    key -> new NetworkEntity(repu, id, hops, timestamp[0], timestamp[1], sourceIP, desIP, sourcePort, desPort, UID++));
+                    key -> new NetworkEntity(repu, sourceIP, desIP, sourcePort, desPort, UID++));
 
         // ------------------- 情况4：什么都没匹配上（比如 ioctl、futex、close fd=3）-----------
         }else res[1] = null;

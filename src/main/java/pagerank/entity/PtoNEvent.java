@@ -29,16 +29,16 @@ public class PtoNEvent extends Event {
 
     public PtoNEvent() {}
 
-    public PtoNEvent(String startS, String startMs,Process source,NetworkEntity sink,String event,long size, long id) {
-        super(TYPE, startS, startMs, id);
+    public PtoNEvent(String startS, String startMs,Process source,NetworkEntity sink,String event,long size) {
+        super(TYPE, startS, startMs);
         this.source = source;
         this.sink = sink;
         this.size = size;
         this.event = event;
     }
 
-    public PtoNEvent(String type, String startS, String startMs,Process source,NetworkEntity sink,String event,long id) {
-        super(type, startS, startMs, id);
+    public PtoNEvent(String type, String startS, String startMs,Process source,NetworkEntity sink,String event) {
+        super(type, startS, startMs);
         this.source = source;
         this.sink = sink;
         this.size = 0;
@@ -47,7 +47,7 @@ public class PtoNEvent extends Event {
 
     public PtoNEvent(NtoPEvent a){
         super(TYPE,a.getStart().split("\\.")[0],
-                a.getStart().split("\\.")[1],a.getUniqID());
+                a.getStart().split("\\.")[1]);
         this.source =a.getSink();
         this.sink = a.getSource();
         this.size = a.getSize();

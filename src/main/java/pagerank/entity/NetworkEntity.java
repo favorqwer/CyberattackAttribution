@@ -9,9 +9,9 @@ public class NetworkEntity extends Entity {
     private String sPort;
     private String dPort;
 
-    public NetworkEntity(double reputation, long id, int hopCount,String time1, String time2,String srcAddress,
+    public NetworkEntity(double reputation, String srcAddress,
                          String dstAddress,String sPort, String dPort,long uniqID){
-        super(reputation,id,hopCount,time1,time2,uniqID);
+        super(reputation, uniqID);
         this.srcAddress = srcAddress;
         this.dstAddress = dstAddress;
         this.sPort = sPort;

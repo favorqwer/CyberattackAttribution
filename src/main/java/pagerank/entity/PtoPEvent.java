@@ -12,15 +12,15 @@ public class PtoPEvent extends Event {
 
     public PtoPEvent() {}
 
-    public PtoPEvent(String startS, String startMs ,Process source,Process sink, String event,long id){
-        super(TYPE,startS,startMs,id);
+    public PtoPEvent(String startS, String startMs ,Process source,Process sink, String event){
+        super(TYPE,startS,startMs);
         this.source = source;
         this.sink = sink;
         this.event = event;
     }
 
-    public PtoPEvent(String type,String startS, String startMs ,Process source,Process sink, String event,long id){
-        super(type,startS,startMs,id);
+    public PtoPEvent(String type,String startS, String startMs ,Process source,Process sink, String event){
+        super(type,startS,startMs);
         this.source = source;
         this.sink = sink;
         this.event = event;

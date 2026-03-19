@@ -14,8 +14,8 @@ public class FtoPEvent extends Event{
     public FtoPEvent() {}
 
     public FtoPEvent(String startS, String startMs,
-                     FileEntity source,Process sink,String event,long size,long id){
-        super(TYPE,startS,startMs, id);
+                     FileEntity source,Process sink,String event,long size){
+        super(TYPE,startS,startMs);
         this.source = source;
         this.sink = sink;
         this.size = size;
@@ -23,8 +23,8 @@ public class FtoPEvent extends Event{
     }
 
     public FtoPEvent(String type, String startS, String startMs,
-                     FileEntity source,Process sink,String event,long id){
-        super(type,startS,startMs, id);
+                     FileEntity source,Process sink,String event){
+        super(type,startS,startMs);
         this.source = source;
         this.sink = sink;
         this.size = 0;

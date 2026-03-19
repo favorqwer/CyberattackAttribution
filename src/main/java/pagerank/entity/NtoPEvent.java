@@ -13,16 +13,16 @@ public class NtoPEvent extends Event {
 
     public NtoPEvent() {}
 
-    public NtoPEvent(String startS, String startMs,NetworkEntity source,Process sink,String event,long size,long id){
-        super(TYPE,startS,startMs,id);
+    public NtoPEvent(String startS, String startMs,NetworkEntity source,Process sink,String event,long size){
+        super(TYPE,startS,startMs);
         this.source = source;
         this.sink = sink;
         this.size = size;
         this.event = event;
     }
 
-    public NtoPEvent(String type, String startS, String startMs,NetworkEntity source,Process sink,String event,long id){
-        super(type,startS,startMs,id);
+    public NtoPEvent(String type, String startS, String startMs,NetworkEntity source,Process sink,String event){
+        super(type,startS,startMs);
         this.source = source;
         this.sink = sink;
         this.size = 0;
@@ -31,7 +31,7 @@ public class NtoPEvent extends Event {
 
     public NtoPEvent(PtoNEvent a){
         super(TYPE,a.getStart().split("\\.")[0],
-                a.getStart().split("\\.")[1],a.getUniqID());
+                a.getStart().split("\\.")[1]);
         this.source = a.getSink();
         this.sink = a.getSource();
         this.size = a.getSize();

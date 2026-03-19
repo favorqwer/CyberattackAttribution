@@ -9,28 +9,13 @@ import java.io.Serializable;
  */
 
 public class Entity implements Serializable {
-    private double reputation;                            
-    private long id;                                     //event number
-    private int hopCount;
-    private long timestamp1;
-    private long timestamp2;
+    private double reputation;
     private long uniqID;
 
     public Entity(){}
 
-    public Entity(long id,int hopCount,long uniqID){
-        this.id = id;
-        this.hopCount = hopCount;
-        reputation = 0.0;
-        this.uniqID =uniqID;
-    }
-
-    public Entity(double reputation,long id,int hopCount,String time1,String time2,long uniqID){
+    public Entity(double reputation, long uniqID){
         this.reputation = reputation;
-        this.id = id;
-        this.hopCount = hopCount;
-        timestamp1 = Long.valueOf(time1);                    //seconds
-        timestamp2 = Long.valueOf(time2);
         this.uniqID = uniqID;
     }
 
@@ -38,31 +23,8 @@ public class Entity implements Serializable {
         return reputation;
     }
 
-    public long getID(){
-        return id;
-    }
-
-    public int getHopCount(){
-        return hopCount;
-    }
-
     public void setReputation(double r){
         reputation = r;
-    }
-
-    public void setHopCount(int h){
-        hopCount = h;
-    }
-
-    public void setId(int i){
-        id = i;
-    }
-
-    public String getTimeStamp(){
-        String s;
-        s = String.valueOf(timestamp1)+"."+String.valueOf(timestamp2);
-        return s;
-
     }
 
     public long getUniqID(){

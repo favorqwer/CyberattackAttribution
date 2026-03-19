@@ -14,8 +14,8 @@ public class PtoFEvent extends Event {
     public PtoFEvent() {}
 
     public PtoFEvent(String startS, String startMs,Process source, FileEntity sink,
-                     String event, long amount,long id){
-        super(TYPE,startS, startMs,id);
+                     String event, long amount){
+        super(TYPE,startS, startMs);
         this.source = source;
         this.sink = sink;
         this.event = event;
@@ -24,8 +24,8 @@ public class PtoFEvent extends Event {
 
 
     public PtoFEvent(String type,String startS, String startMs,Process source, FileEntity sink,
-                     String event, long amount,long id){
-        super(type,startS, startMs,id);
+                     String event, long amount){
+        super(type,startS, startMs);
         this.source = source;
         this.sink = sink;
         this.event = event;
