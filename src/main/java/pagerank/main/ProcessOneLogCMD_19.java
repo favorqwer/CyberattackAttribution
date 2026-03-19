@@ -134,10 +134,6 @@ public class ProcessOneLogCMD_19 {
                     CPR.applyMode(cprModeNormalized, cprTimeWindow);
                     System.out.println("CPR mode standard_cpr (paper-aligned causality-preserved reduction)");
                     break;
-                case CausalityPreserve.MODE_TYPE_AGGREGATION:
-                    CPR.applyMode(CausalityPreserve.MODE_TYPE_AGGREGATION, cprTimeWindow);
-                    System.out.println("CPR mode type_aggregation (consider event type only)");
-                    break;
                 case CausalityPreserve.MODE_FULL_MERGE:
                 case CausalityPreserve.MODE_ENDPOINT_AGGREGATION:
                     CPR.applyMode(cprModeNormalized, cprTimeWindow);
@@ -151,16 +147,20 @@ public class ProcessOneLogCMD_19 {
                     CPR.applyMode(CausalityPreserve.MODE_NO_MERGE, cprTimeWindow);
                     System.out.println("CPR mode no_merge (no edge fusion)");
                     break;
+                case CausalityPreserve.MODE_PCAR:
+                    CPR.applyMode(CausalityPreserve.MODE_PCAR, cprTimeWindow);
+                    System.out.println("CPR mode pcar (standard CPR + hot-process approximation, hot window=5s, threshold=20)");
+                    break;
                 default:
                     throw new IllegalArgumentException("Unsupported cpr_mode: " + cprMode
                             + ". Supported values: "
                             + CausalityPreserve.MODE_STANDARD_CPR + ", "
                             + CausalityPreserve.MODE_CAUSAL_STRICT + ", "
-                            + CausalityPreserve.MODE_TYPE_AGGREGATION + ", "
                             + CausalityPreserve.MODE_FULL_MERGE + ", "
                             + CausalityPreserve.MODE_ENDPOINT_AGGREGATION + ", "
                             + CausalityPreserve.MODE_WINDOWED_SEQUENCE + ", "
-                            + CausalityPreserve.MODE_NO_MERGE);
+                            + CausalityPreserve.MODE_NO_MERGE + ", "
+                            + CausalityPreserve.MODE_PCAR);
             }
             end = System.currentTimeMillis();
             timeCost = getTimeCost(start, end);

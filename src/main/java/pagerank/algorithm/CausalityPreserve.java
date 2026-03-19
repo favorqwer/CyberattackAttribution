@@ -38,11 +38,14 @@ import java.util.*;
 public class CausalityPreserve {
     public static final String MODE_STANDARD_CPR = "standard_cpr";
     public static final String MODE_CAUSAL_STRICT = "causal_strict";
-    public static final String MODE_TYPE_AGGREGATION = "type_aggregation";
     public static final String MODE_FULL_MERGE = "full_merge";
     public static final String MODE_ENDPOINT_AGGREGATION = "endpoint_aggregation";
     public static final String MODE_WINDOWED_SEQUENCE = "windowed_sequence";
     public static final String MODE_NO_MERGE = "no_merge";
+    public static final String MODE_PCAR = "pcar";
+
+    private static final double PCAR_HOT_WINDOW_SECONDS = 5.0d;
+    private static final int PCAR_HOT_EVENT_THRESHOLD = 20;
 
     // 输入的依赖图（后向切片后的子图）
     DirectedPseudograph<EntityNode, EventEdge> input;
@@ -74,8 +77,6 @@ public class CausalityPreserve {
             case MODE_STANDARD_CPR:
             case MODE_CAUSAL_STRICT:
                 return applyCausalStrictMode();
-            case MODE_TYPE_AGGREGATION:
-                return applyTypeAggregationMode();
             case MODE_FULL_MERGE:
             case MODE_ENDPOINT_AGGREGATION:
                 return applyEndpointAggregationMode();
@@ -83,17 +84,19 @@ public class CausalityPreserve {
                 return applyWindowedSequenceMode(windowSeconds);
             case MODE_NO_MERGE:
                 return applyNoMergeMode();
+            case MODE_PCAR:
+                return applyPcarMode(windowSeconds, PCAR_HOT_WINDOW_SECONDS, PCAR_HOT_EVENT_THRESHOLD);
             default:
                 throw new IllegalArgumentException(
                         "Unsupported cpr_mode: " + mode
                                 + ". Supported values: "
                                 + MODE_STANDARD_CPR + ", "
                                 + MODE_CAUSAL_STRICT + ", "
-                                + MODE_TYPE_AGGREGATION + ", "
                                 + MODE_FULL_MERGE + ", "
                                 + MODE_ENDPOINT_AGGREGATION + ", "
                                 + MODE_WINDOWED_SEQUENCE + ", "
-                                + MODE_NO_MERGE);
+                                + MODE_NO_MERGE + ", "
+                                + MODE_PCAR);
         }
     }
 
@@ -231,6 +234,43 @@ public class CausalityPreserve {
         return afterMerge;
     }
 
+    /**
+     * PCAR (Process-centric Causality Approximation Reduction)
+     *
+     * 实现策略：
+     * 1. 先执行标准CPR，保证基础因果保真。
+     * 2. 在CPR结果中检测hot process（默认5秒内>=20条事件）。
+     * 3. 对hot process突发区间内、且与hot process直接相连的边，执行近似窗口聚合。
+     *
+     * 该策略会在iBurst场景下进一步压缩边数，同时把近似误差局限在hot process邻域。
+     */
+    private DirectedPseudograph<EntityNode, EventEdge> applyPcarMode(double ignoredMergeWindowSeconds,
+            double hotWindowSeconds,
+            int hotEventThreshold) {
+        DirectedPseudograph<EntityNode, EventEdge> cprGraph = applyCausalStrictMode();
+        Map<EntityNode, List<TimeInterval>> burstIntervals = detectHotProcessBursts(cprGraph, hotWindowSeconds,
+                hotEventThreshold);
+        if (burstIntervals.isEmpty()) {
+            afterMerge = cprGraph;
+            return afterMerge;
+        }
+
+        List<BurstTask> tasks = new ArrayList<>();
+        for (Map.Entry<EntityNode, List<TimeInterval>> entry : burstIntervals.entrySet()) {
+            for (TimeInterval interval : entry.getValue()) {
+                tasks.add(new BurstTask(entry.getKey(), interval));
+            }
+        }
+        tasks.sort((a, b) -> a.interval.start.compareTo(b.interval.start));
+
+        for (BurstTask task : tasks) {
+            applyPcarForBurst(cprGraph, task.hotProcess, task.interval);
+        }
+
+        afterMerge = cprGraph;
+        return afterMerge;
+    }
+
     // Fang's comment: merge all the edges, don't care about time window and event
     // type
     private DirectedPseudograph<EntityNode, EventEdge> applyEndpointAggregationMode() {
@@ -259,40 +299,265 @@ public class CausalityPreserve {
 
     }
 
-    /*
-     * Fang's comment: for the edges between the pair of vertex, this method merges
-     * the edges having the same event type
-     * Don't care about time window.
-     */
-    private DirectedPseudograph<EntityNode, EventEdge> applyTypeAggregationMode() {
-
-        Set<EventEdge> edgeSet = input.edgeSet();
-        List<EventEdge> edgeList = new LinkedList<>(edgeSet);
-        Collections.sort(edgeList, (a, b) -> a.getStartTime().compareTo(b.getStartTime()));
-        Iterator iter = edgeList.iterator();
-        Map<String, Map<EntityNode, Map<EntityNode, Stack<EventEdge>>>> pairStacks = initializePairStack(edgeSet);
-
-        while (iter.hasNext()) {
-            EventEdge cur = (EventEdge) iter.next();
-            EntityNode source = cur.getSource();
-            EntityNode target = cur.getSink();
-            Stack<EventEdge> stack = pairStacks.get(cur.getEvent()).get(source).get(target);
-            if (stack.isEmpty()) {
-                stack.push(cur);
-            } else {
-                EventEdge edgePrevious = stack.pop();
-                edgePrevious = merge(edgePrevious, cur);
-                stack.push(edgePrevious);
-            }
-        }
-        afterMerge = input;
-        return afterMerge;
-    }
-
     private EventEdge merge(EventEdge previous, EventEdge cur) {
         previous = previous.merge(cur);
         input.removeEdge(cur);
         return previous;
+    }
+
+    private Map<EntityNode, List<TimeInterval>> detectHotProcessBursts(
+            DirectedPseudograph<EntityNode, EventEdge> graph,
+            double hotWindowSeconds,
+            int hotEventThreshold) {
+        Map<EntityNode, List<EventEdge>> incidentByProcess = new HashMap<>();
+        for (EventEdge edge : graph.edgeSet()) {
+            if (edge.getSource().isProcessNode()) {
+                incidentByProcess.computeIfAbsent(edge.getSource(), k -> new ArrayList<>()).add(edge);
+            }
+            if (edge.getSink().isProcessNode()) {
+                incidentByProcess.computeIfAbsent(edge.getSink(), k -> new ArrayList<>()).add(edge);
+            }
+        }
+
+        BigDecimal window = new BigDecimal(hotWindowSeconds);
+        Map<EntityNode, List<TimeInterval>> burstIntervals = new HashMap<>();
+
+        for (Map.Entry<EntityNode, List<EventEdge>> entry : incidentByProcess.entrySet()) {
+            List<EventEdge> edges = entry.getValue();
+            edges.sort(Comparator.comparing(EventEdge::getStartTime));
+            Deque<EventEdge> queue = new ArrayDeque<>();
+            List<TimeInterval> intervals = new ArrayList<>();
+
+            for (EventEdge current : edges) {
+                queue.addLast(current);
+                while (!queue.isEmpty()) {
+                    BigDecimal span = current.getStartTime().subtract(queue.peekFirst().getStartTime());
+                    if (span.compareTo(window) > 0) {
+                        queue.removeFirst();
+                    } else {
+                        break;
+                    }
+                }
+
+                if (queue.size() >= hotEventThreshold) {
+                    BigDecimal intervalStart = queue.peekFirst().getStartTime();
+                    BigDecimal intervalEnd = current.getStartTime();
+                    appendOrMergeInterval(intervals, new TimeInterval(intervalStart, intervalEnd));
+                }
+            }
+
+            if (!intervals.isEmpty()) {
+                burstIntervals.put(entry.getKey(), intervals);
+            }
+        }
+
+        return burstIntervals;
+    }
+
+    private void applyPcarForBurst(DirectedPseudograph<EntityNode, EventEdge> graph,
+            EntityNode hotProcess,
+            TimeInterval burstInterval) {
+        Set<EntityNode> egoNet = buildEgoNet(graph, hotProcess, burstInterval);
+        if (egoNet.isEmpty()) {
+            return;
+        }
+
+        List<EventEdge> stream = collectEgoStream(graph, egoNet, burstInterval);
+        if (stream.isEmpty()) {
+            return;
+        }
+
+        BigDecimal inDeadline = null;
+        BigDecimal outDeadline = null;
+        Map<AggregableKey, Deque<EventEdge>> stacks = new HashMap<>();
+
+        for (EventEdge edge : stream) {
+            if (!graph.containsEdge(edge)) {
+                continue;
+            }
+
+            boolean srcIn = egoNet.contains(edge.getSource());
+            boolean dstIn = egoNet.contains(edge.getSink());
+
+            if (!srcIn && dstIn) {
+                inDeadline = edge.getEndTime();
+                continue;
+            }
+            if (srcIn && !dstIn) {
+                outDeadline = edge.getEndTime();
+                continue;
+            }
+            if (!srcIn) {
+                continue;
+            }
+
+            clearStateForPcarEdge(graph, hotProcess, edge, inDeadline, outDeadline, stacks);
+        }
+    }
+
+    private Set<EntityNode> buildEgoNet(DirectedPseudograph<EntityNode, EventEdge> graph,
+            EntityNode hotProcess,
+            TimeInterval interval) {
+        Set<EntityNode> egoNet = new HashSet<>();
+        egoNet.add(hotProcess);
+
+        for (EventEdge edge : graph.edgeSet()) {
+            if (!overlaps(edge, interval)) {
+                continue;
+            }
+            if (edge.getSource().equals(hotProcess)) {
+                egoNet.add(edge.getSink());
+            }
+            if (edge.getSink().equals(hotProcess)) {
+                egoNet.add(edge.getSource());
+            }
+        }
+
+        return egoNet;
+    }
+
+    private List<EventEdge> collectEgoStream(DirectedPseudograph<EntityNode, EventEdge> graph,
+            Set<EntityNode> egoNet,
+            TimeInterval interval) {
+        List<EventEdge> stream = new ArrayList<>();
+        for (EventEdge edge : graph.edgeSet()) {
+            if (!overlaps(edge, interval)) {
+                continue;
+            }
+            if (egoNet.contains(edge.getSource()) || egoNet.contains(edge.getSink())) {
+                stream.add(edge);
+            }
+        }
+        stream.sort((a, b) -> {
+            int startCmp = a.getStartTime().compareTo(b.getStartTime());
+            if (startCmp != 0) {
+                return startCmp;
+            }
+            return a.getEndTime().compareTo(b.getEndTime());
+        });
+        return stream;
+    }
+
+    private void clearStateForPcarEdge(DirectedPseudograph<EntityNode, EventEdge> graph,
+            EntityNode hotProcess,
+            EventEdge edge,
+            BigDecimal inDeadline,
+            BigDecimal outDeadline,
+            Map<AggregableKey, Deque<EventEdge>> stacks) {
+        AggregableKey key = new AggregableKey(edge.getSource(), edge.getSink(), edge.getEvent());
+        Deque<EventEdge> stack = stacks.computeIfAbsent(key, k -> new ArrayDeque<>());
+
+        if (stack.isEmpty()) {
+            stack.push(edge);
+            return;
+        }
+
+        EventEdge previous = stack.pop();
+        boolean mergeAllowed;
+        if (edge.getSource().equals(hotProcess)) {
+            mergeAllowed = pcarCheck(graph, previous, edge, inDeadline, true);
+        } else if (edge.getSink().equals(hotProcess)) {
+            mergeAllowed = pcarCheck(graph, previous, edge, outDeadline, false);
+        } else {
+            mergeAllowed = true;
+        }
+
+        if (mergeAllowed) {
+            previous.merge(edge);
+            graph.removeEdge(edge);
+            stack.push(previous);
+            return;
+        }
+
+        stack.push(previous);
+        stack.push(edge);
+    }
+
+    private boolean pcarCheck(DirectedPseudograph<EntityNode, EventEdge> graph,
+            EventEdge previous,
+            EventEdge current,
+            BigDecimal deadline,
+            boolean isOutDirection) {
+        if (deadline != null && deadline.compareTo(previous.getEndTime()) > 0) {
+            return false;
+        }
+
+        if (isOutDirection) {
+            return forwardCheck(graph, previous, current, previous.getSink());
+        }
+        return backwardCheck(graph, previous, current, previous.getSource());
+    }
+
+    private boolean overlaps(EventEdge edge, TimeInterval interval) {
+        return edge.getEndTime().compareTo(interval.start) >= 0
+                && edge.getStartTime().compareTo(interval.end) <= 0;
+    }
+
+    private void appendOrMergeInterval(List<TimeInterval> intervals, TimeInterval candidate) {
+        if (intervals.isEmpty()) {
+            intervals.add(candidate);
+            return;
+        }
+
+        TimeInterval last = intervals.get(intervals.size() - 1);
+        if (candidate.start.compareTo(last.end) <= 0) {
+            if (candidate.end.compareTo(last.end) > 0) {
+                last.end = candidate.end;
+            }
+        } else {
+            intervals.add(candidate);
+        }
+    }
+
+    private static final class TimeInterval {
+        private final BigDecimal start;
+        private BigDecimal end;
+
+        private TimeInterval(BigDecimal start, BigDecimal end) {
+            this.start = start;
+            this.end = end;
+        }
+    }
+
+    private static final class BurstTask {
+        private final EntityNode hotProcess;
+        private final TimeInterval interval;
+
+        private BurstTask(EntityNode hotProcess, TimeInterval interval) {
+            this.hotProcess = hotProcess;
+            this.interval = interval;
+        }
+    }
+
+    private static final class AggregableKey {
+        private final EntityNode source;
+        private final EntityNode sink;
+        private final String event;
+
+        private AggregableKey(EntityNode source, EntityNode sink, String event) {
+            this.source = source;
+            this.sink = sink;
+            this.event = event;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof AggregableKey)) {
+                return false;
+            }
+            AggregableKey that = (AggregableKey) o;
+            return Objects.equals(source, that.source)
+                    && Objects.equals(sink, that.sink)
+                    && Objects.equals(event, that.event);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(source, sink, event);
+        }
     }
 
     private Map<String, Map<EntityNode, Map<EntityNode, Stack<EventEdge>>>> initializePairStack(Set<EventEdge> edges) {
@@ -329,13 +594,20 @@ public class CausalityPreserve {
     }
 
     private boolean backwardCheck(EventEdge p, EventEdge l, EntityNode u) {
+        return backwardCheck(input, p, l, u);
+    }
+
+    private boolean backwardCheck(DirectedPseudograph<EntityNode, EventEdge> graph,
+            EventEdge p,
+            EventEdge l,
+            EntityNode u) {
         BigDecimal gapStart = p.getEndTime();
-        BigDecimal gapEnd = l.getStartTime();
+        BigDecimal gapEnd = l.getEndTime();
         if (gapEnd.compareTo(gapStart) <= 0) {
             return true;
         }
 
-        Set<EventEdge> incoming = input.incomingEdgesOf(u);
+        Set<EventEdge> incoming = graph.incomingEdgesOf(u);
         for (EventEdge edge : incoming) {
             if (edge == p || edge == l) {
                 continue;
@@ -351,13 +623,20 @@ public class CausalityPreserve {
     }
 
     private boolean forwardCheck(EventEdge p, EventEdge l, EntityNode v) {
-        BigDecimal gapStart = p.getEndTime();
+        return forwardCheck(input, p, l, v);
+    }
+
+    private boolean forwardCheck(DirectedPseudograph<EntityNode, EventEdge> graph,
+            EventEdge p,
+            EventEdge l,
+            EntityNode v) {
+        BigDecimal gapStart = p.getStartTime();
         BigDecimal gapEnd = l.getStartTime();
         if (gapEnd.compareTo(gapStart) <= 0) {
             return true;
         }
 
-        Set<EventEdge> outgoing = input.outgoingEdgesOf(v);
+        Set<EventEdge> outgoing = graph.outgoingEdgesOf(v);
         for (EventEdge edge : outgoing) {
             if (edge == p || edge == l) {
                 continue;
