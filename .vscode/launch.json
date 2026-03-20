@@ -8,6 +8,14 @@
             "mainClass": "pagerank.main.ExperimentRunnerCmd",
             "args": "./test ./test/result attack.txt",
             "projectName": "reptracker"
+        },
+        {
+            "type": "java",
+            "name": "Run LLMFilterRunner",
+            "request": "launch",
+            "mainClass": "pagerank.main.LLMFilterRunner",
+            "args": "./test/result/test-attack/results ./test/result_llm_only/test-attack llm_snapshot_attack_results.json",
+            "projectName": "reptracker"
         }
     ]
 }

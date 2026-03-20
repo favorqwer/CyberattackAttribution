@@ -406,6 +406,15 @@ public class ProcessOneLogCMD_19 {
                 System.out.println("Vertices: " + allInOneGraph.vertexSet().size() + "   Edges: "
                         + allInOneGraph.edgeSet().size());
 
+                try {
+                    File snapshotFile = new File(resFolderForFilter,
+                        "llm_snapshot_" + filename + "_" + method + suffix + ".json");
+                    LLMFilterSnapshotIO.writeSnapshot(allInOneGraph, allSelectedStarts, poiEvent, snapshotFile);
+                    System.out.println("LLM snapshot saved: " + snapshotFile.getAbsolutePath());
+                } catch (Exception snapshotEx) {
+                    System.err.println("Failed to save LLM snapshot: " + snapshotEx.getMessage());
+                }
+
                 // ======== 利用 LLM 过滤图 ========
                 try {
                     System.out.println("Starting LLM Filtering Process...");
