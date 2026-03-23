@@ -14,7 +14,7 @@
             "name": "Run LLMFilterRunner",
             "request": "launch",
             "mainClass": "pagerank.main.LLMFilterRunner",
-            "args": "./test/result/test-attack/results ./test/result_llm_only/test-attack llm_snapshot_attack_results.json",
+            "args": "./test/result/attack ./test/result/attack/graphs llm_snapshot_attack_graphs.json",
             "projectName": "reptracker"
         }
     ]

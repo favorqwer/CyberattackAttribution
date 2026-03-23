@@ -73,6 +73,15 @@ public class LLMGraphFilter {
             List<String> entryPoints,
             String poiEvent,
             String logFilePath) {
+        return filterGraph(originalGraph, entryPoints, poiEvent, logFilePath, null);
+        }
+
+        public DirectedPseudograph<EntityNode, EventEdge> filterGraph(
+            DirectedPseudograph<EntityNode, EventEdge> originalGraph,
+            List<String> entryPoints,
+            String poiEvent,
+            String logFilePath,
+            String intermediateOutputPrefix) {
 
         if (!this.llmEnabled) {
             System.out.println("LLM filtering is disabled by configuration (llm_enabled=false). Returning original graph.");
@@ -149,7 +158,7 @@ public class LLMGraphFilter {
         DirectedPseudograph<EntityNode, EventEdge> filteredGraph = buildFilteredGraph(originalGraph, keptEdgeIds);
 
         // 优化#6：生成 LLM 原始输出的中间 SVG（抽取为独立方法）
-        exportIntermediateVisualization(filteredGraph, logFilePath, poiEvent, filteredEntryPoints);
+        exportIntermediateVisualization(filteredGraph, logFilePath, poiEvent, filteredEntryPoints, intermediateOutputPrefix);
 
         // 9. 将 LLM 识别的入口节点加入过滤图（确保它们存在于图中）
         Set<EntityNode> llmEntryEntityNodes = new HashSet<>();
@@ -202,9 +211,11 @@ public class LLMGraphFilter {
      */
     private void exportIntermediateVisualization(
             DirectedPseudograph<EntityNode, EventEdge> filteredGraph, String logFilePath,
-            String poiEvent, List<String> entryPoints) {
+            String poiEvent, List<String> entryPoints, String intermediateOutputPrefix) {
         try {
-            String intermediatePath = logFilePath.replace(".log", "_llm_raw");
+            String intermediatePath = (intermediateOutputPrefix != null && !intermediateOutputPrefix.trim().isEmpty())
+                    ? intermediateOutputPrefix
+                    : logFilePath.replace(".log", "_llm_raw");
             IterateGraph intermediateOut = new IterateGraph(filteredGraph, poiEvent, entryPoints);
             intermediateOut.exportGraph(intermediatePath);
             DotToSvg(intermediatePath + ".dot", intermediatePath + ".svg");

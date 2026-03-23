@@ -138,7 +138,7 @@ public class ExperimentRunnerCmd {
             }
 
             for (Experiment e : experimentsBackward) {
-                File oneRes = new File(resDir + "/" + e.configFile.getParentFile().getName() + "-" + getBaseName(e.configFile.getName()));
+                File oneRes = new File(resDir, getBaseName(e.log.getName()));
                 if (!oneRes.exists()) {
                     oneRes.mkdir();
                 }

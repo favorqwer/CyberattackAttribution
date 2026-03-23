@@ -41,7 +41,7 @@ public class LLMFilterRunner {
 
         LLMFilterSnapshotIO.SnapshotData snapshot = LLMFilterSnapshotIO.readSnapshot(snapshotFile);
 
-        String baseName = getBaseName(snapshotFile.getName());
+        String baseName = stripCaseGraphsSuffix(getBaseName(snapshotFile.getName()));
         String llmLogPath = new File(outputFolder, "llm_interaction_" + baseName + ".log").getAbsolutePath();
 
         DirectedPseudograph<EntityNode, EventEdge> inputGraph = snapshot.graph;
@@ -86,6 +86,10 @@ public class LLMFilterRunner {
             return fileName;
         }
         return fileName.substring(0, lastDotIndex);
+    }
+
+    private static String stripCaseGraphsSuffix(String fileName) {
+        return fileName.replaceFirst("_[^_]+_graphs$", "");
     }
 
     private static void initGraphvizEngineQuietly() {

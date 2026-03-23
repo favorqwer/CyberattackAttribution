@@ -281,7 +281,7 @@ public class ProcessOneLogCMD_19 {
                 boolean outputFilterGraph = true;
                 // 只保留能从 forwardStarts 正向到达 detection 的所有路径。
                 // 输出文件名叫 sysrep 开头 → 代表这是“我们系统（sysrep）”找到的攻击路径图，人工看起来最干净、最准。
-                ProcessOneLogCMD_19.filter_graph_by_forward_category(forwardStarts, orignal, "results", resultDir,
+                ProcessOneLogCMD_19.filter_graph_by_forward_category(forwardStarts, orignal, "graphs", resultDir,
                         filename, suffix, "1", 3, infer, outputFilterGraph, detection);
 
                 List<String> entryPoints = IterateGraph.getCandidateEntryPoint(infer.graph, detection);
@@ -361,7 +361,7 @@ public class ProcessOneLogCMD_19 {
             if (!resFolderForFilter.exists()) {
                 resFolderForFilter.mkdir();
             }
-            File recordStarts = new File(resFolderForFilter.getAbsolutePath() + "/" + "forward_starts_" + filename + "_"
+                File recordStarts = new File(resultDir + "forward_starts_" + filename + "_"
                     + time + "_" + method + ".txt");
             FileWriter fileWriter = new FileWriter(recordStarts);
             PrintWriter printWriter = new PrintWriter(fileWriter);
@@ -395,7 +395,7 @@ public class ProcessOneLogCMD_19 {
 
                 IterateGraph mergedOut = new IterateGraph(allInOneGraph, poiEvent, allSelectedStarts);
                 String mergedPath = resFolderForFilter.getAbsolutePath() + "/" +
-                        "complete_provenance_graph_" + filename + "_" + method + suffix;
+                    "complete_provenance_graph" + suffix;
 
                 mergedOut.exportGraph(mergedPath);
                 DotToSvg(mergedPath + ".dot", mergedPath + ".svg");
@@ -407,7 +407,7 @@ public class ProcessOneLogCMD_19 {
                         + allInOneGraph.edgeSet().size());
 
                 try {
-                    File snapshotFile = new File(resFolderForFilter,
+                    File snapshotFile = new File(resultDir,
                         "llm_snapshot_" + filename + "_" + method + suffix + ".json");
                     LLMFilterSnapshotIO.writeSnapshot(allInOneGraph, allSelectedStarts, poiEvent, snapshotFile);
                     System.out.println("LLM snapshot saved: " + snapshotFile.getAbsolutePath());
@@ -423,12 +423,15 @@ public class ProcessOneLogCMD_19 {
                     String llmLogPath = new File(resultDir,
                             "llm_interaction_" + filename + "_" + method + suffix + ".log").getAbsolutePath();
 
-                    DirectedPseudograph<EntityNode, EventEdge> llmFilteredGraph = llmFilter.filterGraph(allInOneGraph,
-                            allSelectedStarts, poiEvent, llmLogPath);
+                        String llmRawOutputPrefix = new File(resFolderForFilter,
+                                "llm_raw_graph" + suffix).getAbsolutePath();
+
+                        DirectedPseudograph<EntityNode, EventEdge> llmFilteredGraph = llmFilter.filterGraph(allInOneGraph,
+                            allSelectedStarts, poiEvent, llmLogPath, llmRawOutputPrefix);
 
                     IterateGraph filteredOut = new IterateGraph(llmFilteredGraph, poiEvent, allSelectedStarts);
                     String filteredPath = resFolderForFilter.getAbsolutePath() + "/" +
-                            "llm_filtered_graph_" + filename + "_" + method + suffix;
+                            "llm_filtered_graph" + suffix;
 
                     filteredOut.exportGraph(filteredPath);
                     DotToSvg(filteredPath + ".dot", filteredPath + ".svg");
