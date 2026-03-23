@@ -1,10 +1,7 @@
 package pagerank.algorithm;
 
 import org.jgrapht.GraphPath;
-import org.jgrapht.alg.connectivity.ConnectivityInspector;
-import org.jgrapht.alg.interfaces.ShortestPathAlgorithm;
 import org.jgrapht.alg.shortestpath.DijkstraShortestPath;
-import org.jgrapht.graph.AsUndirectedGraph;
 import org.jgrapht.graph.DirectedPseudograph;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
@@ -161,14 +158,19 @@ public class LLMGraphFilter {
         exportIntermediateVisualization(filteredGraph, logFilePath, poiEvent, filteredEntryPoints, intermediateOutputPrefix);
 
         // 9. 将 LLM 识别的入口节点加入过滤图（确保它们存在于图中）
-        Set<EntityNode> llmEntryEntityNodes = new HashSet<>();
+        Set<EntityNode> candidateEntryEntityNodes = new HashSet<>();
         for (EntityNode node : originalGraph.vertexSet()) {
-            if (llmEntryNodes.contains(node.getSignature())) {
+            if (filteredEntryPoints.contains(node.getSignature())) {
                 if (!filteredGraph.containsVertex(node)) {
                     filteredGraph.addVertex(node);
                 }
-                llmEntryEntityNodes.add(node);
+                candidateEntryEntityNodes.add(node);
             }
+        }
+        System.out.println("Preserving all candidate entry nodes: " + candidateEntryEntityNodes.size()
+                + " / " + filteredEntryPoints.size());
+        if (!llmEntryNodes.isEmpty()) {
+            System.out.println("LLM-selected entry nodes are recorded in log only; final graph keeps all candidate entries.");
         }
 
         // 10. 找到 POI 对应的节点
@@ -184,7 +186,7 @@ public class LLMGraphFilter {
         }
 
         // 11. 连通性检查与后处理补全算法：保证每个入口节点到 POI 都有路径
-        ensureConnectivity(originalGraph, filteredGraph, llmEntryEntityNodes, poiNode);
+        ensureConnectivity(originalGraph, filteredGraph, candidateEntryEntityNodes, poiNode);
 
         return filteredGraph;
     }
@@ -572,109 +574,52 @@ public class LLMGraphFilter {
      */
     private void ensureConnectivity(DirectedPseudograph<EntityNode, EventEdge> originalGraph,
                                     DirectedPseudograph<EntityNode, EventEdge> filteredGraph,
-                                    Set<EntityNode> llmEntryNodes,
+                                    Set<EntityNode> candidateEntryNodes,
                                     EntityNode poiNode) {
 
-        if (filteredGraph.vertexSet().size() <= 1) {
+        if (poiNode == null) {
+            System.err.println("Warning: POI node not found in original graph. Skipping entry-to-POI patching.");
             return;
         }
 
-        AsUndirectedGraph<EntityNode, EventEdge> undirectedOriginal = new AsUndirectedGraph<>(originalGraph);
-        DijkstraShortestPath<EntityNode, EventEdge> dijkstra = new DijkstraShortestPath<>(undirectedOriginal);
-
-        // ============ Phase 1: Ensure each LLM entry node has a path to POI ============
-        if (poiNode != null && !llmEntryNodes.isEmpty()) {
-            System.out.println("Phase 1: Ensuring each LLM entry node has a path to POI...");
-
-            for (EntityNode entryNode : llmEntryNodes) {
-                AsUndirectedGraph<EntityNode, EventEdge> curUndirected = new AsUndirectedGraph<>(filteredGraph);
-                ConnectivityInspector<EntityNode, EventEdge> curInspector = new ConnectivityInspector<>(curUndirected);
-
-                if (filteredGraph.containsVertex(entryNode) && filteredGraph.containsVertex(poiNode)
-                        && curInspector.pathExists(entryNode, poiNode)) {
-                    System.out.println("  Entry node [" + entryNode.getSignature() + "] already connected to POI.");
-                    continue;
-                }
-
-                try {
-                    GraphPath<EntityNode, EventEdge> path = dijkstra.getPath(entryNode, poiNode);
-                    if (path != null) {
-                        System.out.println("  Patching path from entry [" + entryNode.getSignature()
-                                + "] to POI [" + poiNode.getSignature() + "], length=" + path.getLength());
-                        addPathToGraph(originalGraph, filteredGraph, path);
-                    } else {
-                        System.err.println("  Warning: No path found from entry node [" + entryNode.getSignature()
-                                + "] to POI in original graph.");
-                    }
-                } catch (Exception e) {
-                    System.err.println("  Error finding path for entry [" + entryNode.getSignature() + "]: " + e.getMessage());
-                }
-            }
-        } else {
-            if (poiNode == null) {
-                System.err.println("Warning: POI node not found in original graph. Skipping entry-to-POI patching.");
-            }
-            if (llmEntryNodes.isEmpty()) {
-                System.out.println("No LLM entry nodes identified. Skipping entry-to-POI patching.");
-            }
-        }
-
-        // ============ Phase 2: Stitch remaining disconnected components ============
-        AsUndirectedGraph<EntityNode, EventEdge> undirectedFiltered = new AsUndirectedGraph<>(filteredGraph);
-        ConnectivityInspector<EntityNode, EventEdge> finalInspector = new ConnectivityInspector<>(undirectedFiltered);
-        List<Set<EntityNode>> connectedComponents = finalInspector.connectedSets();
-
-        if (connectedComponents.size() <= 1) {
-            System.out.println("Graph is fully connected after entry-to-POI patching.");
+        if (candidateEntryNodes.isEmpty()) {
+            System.out.println("No candidate entry nodes found in the original graph. Skipping entry-to-POI patching.");
             return;
         }
 
-        System.out.println("Phase 2: " + connectedComponents.size() + " components remain. Stitching disconnected components...");
+        DijkstraShortestPath<EntityNode, EventEdge> originalDijkstra = new DijkstraShortestPath<>(originalGraph);
 
-        Set<EntityNode> mainComponent = null;
-        if (poiNode != null) {
-            for (Set<EntityNode> comp : connectedComponents) {
-                if (comp.contains(poiNode)) {
-                    mainComponent = new HashSet<>(comp);
-                    break;
-                }
+        System.out.println("Ensuring every candidate entry node has a directed path to POI...");
+        for (EntityNode entryNode : candidateEntryNodes) {
+            if (!filteredGraph.containsVertex(entryNode)) {
+                filteredGraph.addVertex(entryNode);
             }
-        }
-        if (mainComponent == null) {
-            mainComponent = new HashSet<>(connectedComponents.stream()
-                    .max(Comparator.comparingInt(Set::size))
-                    .orElse(connectedComponents.get(0)));
-        }
 
-        for (Set<EntityNode> targetComponent : connectedComponents) {
-            if (mainComponent.containsAll(targetComponent)) {
+            GraphPath<EntityNode, EventEdge> existingPath =
+                    new DijkstraShortestPath<>(filteredGraph).getPath(entryNode, poiNode);
+            if (existingPath != null) {
+                System.out.println("  Entry node [" + entryNode.getSignature() + "] already reaches POI.");
                 continue;
             }
 
-            GraphPath<EntityNode, EventEdge> bestPath = null;
-            int minPathLength = Integer.MAX_VALUE;
-
-            for (EntityNode sourceNode : mainComponent) {
-                ShortestPathAlgorithm.SingleSourcePaths<EntityNode, EventEdge> paths = dijkstra.getPaths(sourceNode);
-                for (EntityNode targetNode : targetComponent) {
-                    GraphPath<EntityNode, EventEdge> path = paths.getPath(targetNode);
-                    if (path != null && path.getLength() < minPathLength) {
-                        minPathLength = path.getLength();
-                        bestPath = path;
-                    }
+            try {
+                GraphPath<EntityNode, EventEdge> path = originalDijkstra.getPath(entryNode, poiNode);
+                if (path != null) {
+                    System.out.println("  Patching directed path from entry [" + entryNode.getSignature()
+                            + "] to POI [" + poiNode.getSignature() + "], length=" + path.getLength());
+                    addPathToGraph(originalGraph, filteredGraph, path);
+                } else {
+                    System.err.println("  Warning: No directed path found from candidate entry ["
+                            + entryNode.getSignature() + "] to POI [" + poiNode.getSignature()
+                            + "] in original graph.");
                 }
+            } catch (Exception e) {
+                System.err.println("  Error finding path for candidate entry [" + entryNode.getSignature()
+                        + "]: " + e.getMessage());
             }
-
-            if (bestPath != null) {
-                addPathToGraph(originalGraph, filteredGraph, bestPath);
-            } else {
-                System.err.println("Warning: Could not find a path to connect a disconnected component in the original graph.");
-            }
-
-            mainComponent.addAll(targetComponent);
         }
 
-        System.out.println("Graph patching complete.");
+        System.out.println("Candidate entry preservation and path patching complete.");
     }
 
     /**
