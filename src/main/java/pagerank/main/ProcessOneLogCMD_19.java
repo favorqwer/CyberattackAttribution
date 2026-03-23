@@ -269,7 +269,7 @@ public class ProcessOneLogCMD_19 {
                 // 只保留能从 forwardStarts 正向到达 detection 的所有路径。
                 // 输出文件名叫 sysrep 开头 → 代表这是“我们系统（sysrep）”找到的攻击路径图，人工看起来最干净、最准。
                 ProcessOneLogCMD_19.filter_graph_by_forward_category(forwardStarts, orignal, "graphs", resultDir,
-                        filename, suffix, "1", 3, infer, outputFilterGraph, detection);
+                        filename, suffix, "1", 3, infer, outputFilterGraph, detection, jsonlog);
 
                 List<String> entryPoints = IterateGraph.getCandidateEntryPoint(infer.graph, detection);
                 ProcessOneLogCMD_19.putToJsonLog(jsonlog, "EntryPointsNumber", String.valueOf(entryPoints.size()));
@@ -347,7 +347,8 @@ public class ProcessOneLogCMD_19 {
                                                         DirectedPseudograph<EntityNode, EventEdge> orignal,
                                                         String method, String resultDir, String filename, String suffix,
                                                         String time, int startLimitForEachCategory,
-                                                        BackwardPropagate_pf infer, boolean outputGraph, String poiEvent) {
+                                                        BackwardPropagate_pf infer, boolean outputGraph, String poiEvent,
+                                                        JSONObject jsonLog) {
         try {
             File resFolderForFilter = new File(resultDir + "/" + method);
             if (!resFolderForFilter.exists()) {
@@ -389,6 +390,10 @@ public class ProcessOneLogCMD_19 {
                 System.out.println("File: " + mergedPath + ".svg");
                 System.out.println("Vertices: " + allInOneGraph.vertexSet().size() + "   Edges: "
                         + allInOneGraph.edgeSet().size());
+                if (jsonLog != null) {
+                    jsonLog.put("CompleteProvenanceVertexNumber", allInOneGraph.vertexSet().size());
+                    jsonLog.put("CompleteProvenanceEdgeNumber", allInOneGraph.edgeSet().size());
+                }
 
                 try {
                     File snapshotFile = new File(resultDir,
@@ -423,6 +428,7 @@ public class ProcessOneLogCMD_19 {
                     System.out.println("File: " + filteredPath + ".svg");
                     System.out.println("Vertices: " + llmFilteredGraph.vertexSet().size() + "   Edges: "
                             + llmFilteredGraph.edgeSet().size());
+                    recordLlmGraphCompressionMetrics(allInOneGraph, llmFilteredGraph, jsonLog);
                 } catch (Exception e) {
                     System.err.println("LLM Filtering failed: " + e.getMessage());
                     e.printStackTrace();
@@ -500,6 +506,41 @@ public class ProcessOneLogCMD_19 {
         }
         selected.addAll(uniqueEntries);
         return selected;
+    }
+
+    private static void recordLlmGraphCompressionMetrics(
+            DirectedPseudograph<EntityNode, EventEdge> originalGraph,
+            DirectedPseudograph<EntityNode, EventEdge> filteredGraph,
+            JSONObject jsonLog) {
+        int originalVertices = originalGraph.vertexSet().size();
+        int originalEdges = originalGraph.edgeSet().size();
+        int filteredVertices = filteredGraph.vertexSet().size();
+        int filteredEdges = filteredGraph.edgeSet().size();
+
+        double vertexCompressionRatio = filteredVertices == 0 ? 0.0
+                : originalVertices * 1.0 / filteredVertices;
+        double edgeCompressionRatio = filteredEdges == 0 ? 0.0
+                : originalEdges * 1.0 / filteredEdges;
+
+        System.out.println(String.format(Locale.ROOT,
+                "LLM graph compression ratios: edges %.4f (%d -> %d), vertices %.4f (%d -> %d)",
+                edgeCompressionRatio,
+                originalEdges,
+                filteredEdges,
+                vertexCompressionRatio,
+                originalVertices,
+                filteredVertices));
+
+        if (jsonLog != null) {
+            jsonLog.put("LLMFilteredVertexNumber", filteredVertices);
+            jsonLog.put("LLMFilteredEdgeNumber", filteredEdges);
+            jsonLog.put("LLMVertexCompressionRatio", roundToFourDecimals(vertexCompressionRatio));
+            jsonLog.put("LLMEdgeCompressionRatio", roundToFourDecimals(edgeCompressionRatio));
+        }
+    }
+
+    private static double roundToFourDecimals(double value) {
+        return Math.round(value * 10000.0) / 10000.0;
     }
 
     @SuppressWarnings("unchecked")
