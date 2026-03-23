@@ -1,7 +1,9 @@
 package pagerank.algorithm;
 
 import org.jgrapht.GraphPath;
+import org.jgrapht.alg.connectivity.ConnectivityInspector;
 import org.jgrapht.alg.shortestpath.DijkstraShortestPath;
+import org.jgrapht.graph.AsUndirectedGraph;
 import org.jgrapht.graph.DirectedPseudograph;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
@@ -161,16 +163,13 @@ public class LLMGraphFilter {
         Set<EntityNode> candidateEntryEntityNodes = new HashSet<>();
         for (EntityNode node : originalGraph.vertexSet()) {
             if (filteredEntryPoints.contains(node.getSignature())) {
-                if (!filteredGraph.containsVertex(node)) {
-                    filteredGraph.addVertex(node);
-                }
                 candidateEntryEntityNodes.add(node);
             }
         }
-        System.out.println("Preserving all candidate entry nodes: " + candidateEntryEntityNodes.size()
+        System.out.println("Collected candidate entry nodes: " + candidateEntryEntityNodes.size()
                 + " / " + filteredEntryPoints.size());
         if (!llmEntryNodes.isEmpty()) {
-            System.out.println("LLM-selected entry nodes are recorded in log only; final graph keeps all candidate entries.");
+            System.out.println("LLM-selected entry nodes are recorded in log only; final graph keeps entries only if they can join the POI component.");
         }
 
         // 10. 找到 POI 对应的节点
@@ -577,49 +576,49 @@ public class LLMGraphFilter {
                                     Set<EntityNode> candidateEntryNodes,
                                     EntityNode poiNode) {
 
+        if (poiNode != null && !filteredGraph.containsVertex(poiNode)) {
+            filteredGraph.addVertex(poiNode);
+        }
+
         if (poiNode == null) {
-            System.err.println("Warning: POI node not found in original graph. Skipping entry-to-POI patching.");
-            return;
+            System.err.println("Warning: POI node not found in original graph. Falling back to largest weak component.");
         }
 
-        if (candidateEntryNodes.isEmpty()) {
-            System.out.println("No candidate entry nodes found in the original graph. Skipping entry-to-POI patching.");
-            return;
-        }
+        if (poiNode != null && !candidateEntryNodes.isEmpty()) {
+            DijkstraShortestPath<EntityNode, EventEdge> originalDijkstra = new DijkstraShortestPath<>(originalGraph);
+            DijkstraShortestPath<EntityNode, EventEdge> filteredDijkstra = new DijkstraShortestPath<>(filteredGraph);
 
-        DijkstraShortestPath<EntityNode, EventEdge> originalDijkstra = new DijkstraShortestPath<>(originalGraph);
-
-        System.out.println("Ensuring every candidate entry node has a directed path to POI...");
-        for (EntityNode entryNode : candidateEntryNodes) {
-            if (!filteredGraph.containsVertex(entryNode)) {
-                filteredGraph.addVertex(entryNode);
-            }
-
-            GraphPath<EntityNode, EventEdge> existingPath =
-                    new DijkstraShortestPath<>(filteredGraph).getPath(entryNode, poiNode);
-            if (existingPath != null) {
-                System.out.println("  Entry node [" + entryNode.getSignature() + "] already reaches POI.");
-                continue;
-            }
-
-            try {
-                GraphPath<EntityNode, EventEdge> path = originalDijkstra.getPath(entryNode, poiNode);
-                if (path != null) {
-                    System.out.println("  Patching directed path from entry [" + entryNode.getSignature()
-                            + "] to POI [" + poiNode.getSignature() + "], length=" + path.getLength());
-                    addPathToGraph(originalGraph, filteredGraph, path);
-                } else {
-                    System.err.println("  Warning: No directed path found from candidate entry ["
-                            + entryNode.getSignature() + "] to POI [" + poiNode.getSignature()
-                            + "] in original graph.");
+            System.out.println("Ensuring candidate entry nodes join the POI component via directed paths...");
+            for (EntityNode entryNode : candidateEntryNodes) {
+                if (filteredGraph.containsVertex(entryNode)) {
+                    GraphPath<EntityNode, EventEdge> existingPath = filteredDijkstra.getPath(entryNode, poiNode);
+                    if (existingPath != null) {
+                        System.out.println("  Entry node [" + entryNode.getSignature() + "] already reaches POI.");
+                        continue;
+                    }
                 }
-            } catch (Exception e) {
-                System.err.println("  Error finding path for candidate entry [" + entryNode.getSignature()
-                        + "]: " + e.getMessage());
+
+                try {
+                    GraphPath<EntityNode, EventEdge> path = originalDijkstra.getPath(entryNode, poiNode);
+                    if (path != null) {
+                        System.out.println("  Patching directed path from entry [" + entryNode.getSignature()
+                                + "] to POI [" + poiNode.getSignature() + "], length=" + path.getLength());
+                        addPathToGraph(originalGraph, filteredGraph, path);
+                    } else {
+                        System.out.println("  Skipping isolated candidate entry [" + entryNode.getSignature()
+                                + "] because no directed path to POI exists in the original graph.");
+                    }
+                } catch (Exception e) {
+                    System.err.println("  Error finding path for candidate entry [" + entryNode.getSignature()
+                            + "]: " + e.getMessage());
+                }
             }
+        } else if (candidateEntryNodes.isEmpty()) {
+            System.out.println("No candidate entry nodes found in the original graph. Skipping entry-to-POI patching.");
         }
 
-        System.out.println("Candidate entry preservation and path patching complete.");
+        forceSingleWeaklyConnectedComponent(originalGraph, filteredGraph, poiNode);
+        System.out.println("Connectivity repair complete. Final graph has a single weakly connected component.");
     }
 
     /**
@@ -638,6 +637,158 @@ public class LLMGraphFilter {
             if (!filteredGraph.containsEdge(edge)) {
                 filteredGraph.addEdge(edgeSource, edgeTarget, edge);
             }
+        }
+    }
+
+    private void forceSingleWeaklyConnectedComponent(DirectedPseudograph<EntityNode, EventEdge> originalGraph,
+                                                     DirectedPseudograph<EntityNode, EventEdge> filteredGraph,
+                                                     EntityNode poiNode) {
+        if (filteredGraph.vertexSet().isEmpty()) {
+            return;
+        }
+
+        ConnectivityInspector<EntityNode, EventEdge> inspector =
+                new ConnectivityInspector<>(new AsUndirectedGraph<>(filteredGraph));
+        List<Set<EntityNode>> components = inspector.connectedSets();
+        if (components.size() <= 1) {
+            return;
+        }
+
+        Set<EntityNode> mainComponent = selectMainComponent(components, poiNode);
+        System.out.println("[LLM Connectivity] Found " + components.size()
+                + " weakly connected components. Main component size=" + mainComponent.size());
+
+        Map<EntityNode, EntityNode> parent = new HashMap<>();
+        Map<EntityNode, EventEdge> parentEdge = new HashMap<>();
+        Set<EntityNode> reachable = weaklyTraverseFromMain(originalGraph, mainComponent, parent, parentEdge);
+
+        for (Set<EntityNode> component : components) {
+            if (component == mainComponent) {
+                continue;
+            }
+
+            EntityNode bridgeStart = findReachableNode(component, reachable);
+            if (bridgeStart == null) {
+                System.out.println("[LLM Connectivity] Pruning unreachable component of size " + component.size());
+                continue;
+            }
+
+            addBridgePath(filteredGraph, bridgeStart, parent, parentEdge, mainComponent);
+        }
+
+        pruneToMainComponent(filteredGraph, poiNode);
+    }
+
+    private Set<EntityNode> selectMainComponent(List<Set<EntityNode>> components, EntityNode poiNode) {
+        if (poiNode != null) {
+            for (Set<EntityNode> component : components) {
+                if (component.contains(poiNode)) {
+                    return component;
+                }
+            }
+        }
+
+        return components.stream()
+                .max(Comparator.comparingInt(Set::size))
+                .orElse(components.get(0));
+    }
+
+    private Set<EntityNode> weaklyTraverseFromMain(DirectedPseudograph<EntityNode, EventEdge> originalGraph,
+                                                   Set<EntityNode> mainComponent,
+                                                   Map<EntityNode, EntityNode> parent,
+                                                   Map<EntityNode, EventEdge> parentEdge) {
+        Queue<EntityNode> queue = new ArrayDeque<>(mainComponent);
+        Set<EntityNode> visited = new HashSet<>(mainComponent);
+
+        while (!queue.isEmpty()) {
+            EntityNode current = queue.poll();
+
+            for (EventEdge edge : originalGraph.outgoingEdgesOf(current)) {
+                EntityNode next = originalGraph.getEdgeTarget(edge);
+                if (visited.add(next)) {
+                    parent.put(next, current);
+                    parentEdge.put(next, edge);
+                    queue.offer(next);
+                }
+            }
+
+            for (EventEdge edge : originalGraph.incomingEdgesOf(current)) {
+                EntityNode next = originalGraph.getEdgeSource(edge);
+                if (visited.add(next)) {
+                    parent.put(next, current);
+                    parentEdge.put(next, edge);
+                    queue.offer(next);
+                }
+            }
+        }
+
+        return visited;
+    }
+
+    private EntityNode findReachableNode(Set<EntityNode> component, Set<EntityNode> reachable) {
+        for (EntityNode node : component) {
+            if (reachable.contains(node)) {
+                return node;
+            }
+        }
+        return null;
+    }
+
+    private void addBridgePath(DirectedPseudograph<EntityNode, EventEdge> filteredGraph,
+                               EntityNode startNode,
+                               Map<EntityNode, EntityNode> parent,
+                               Map<EntityNode, EventEdge> parentEdge,
+                               Set<EntityNode> mainComponent) {
+        EntityNode current = startNode;
+        int addedEdges = 0;
+
+        while (!mainComponent.contains(current) && parentEdge.containsKey(current)) {
+            EventEdge edge = parentEdge.get(current);
+            EntityNode edgeSource = edge.getSource();
+            EntityNode edgeTarget = edge.getSink();
+
+            if (!filteredGraph.containsVertex(edgeSource)) {
+                filteredGraph.addVertex(edgeSource);
+            }
+            if (!filteredGraph.containsVertex(edgeTarget)) {
+                filteredGraph.addVertex(edgeTarget);
+            }
+            if (!filteredGraph.containsEdge(edge)) {
+                filteredGraph.addEdge(edgeSource, edgeTarget, edge);
+                addedEdges++;
+            }
+
+            current = parent.get(current);
+        }
+
+        System.out.println("[LLM Connectivity] Bridged component via node ["
+                + startNode.getSignature() + "], added " + addedEdges + " edge(s).");
+    }
+
+    private void pruneToMainComponent(DirectedPseudograph<EntityNode, EventEdge> filteredGraph, EntityNode poiNode) {
+        if (filteredGraph.vertexSet().isEmpty()) {
+            return;
+        }
+
+        ConnectivityInspector<EntityNode, EventEdge> inspector =
+                new ConnectivityInspector<>(new AsUndirectedGraph<>(filteredGraph));
+        List<Set<EntityNode>> components = inspector.connectedSets();
+        if (components.size() <= 1) {
+            return;
+        }
+
+        Set<EntityNode> mainComponent = selectMainComponent(components, poiNode);
+        Set<EntityNode> verticesToRemove = new HashSet<>();
+        for (Set<EntityNode> component : components) {
+            if (component != mainComponent) {
+                verticesToRemove.addAll(component);
+            }
+        }
+
+        if (!verticesToRemove.isEmpty()) {
+            System.out.println("[LLM Connectivity] Removing " + verticesToRemove.size()
+                    + " vertices outside the main weakly connected component.");
+            filteredGraph.removeAllVertices(verticesToRemove);
         }
     }
 }
