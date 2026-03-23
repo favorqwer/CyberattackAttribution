@@ -408,7 +408,7 @@ public class ProcessOneLogCMD_19 {
 
                 try {
                     File snapshotFile = new File(resultDir,
-                        "llm_snapshot_" + filename + "_" + method + suffix + ".json");
+                        "snapshot_" + filename + "_" + method + suffix + ".json");
                     LLMFilterSnapshotIO.writeSnapshot(allInOneGraph, allSelectedStarts, poiEvent, snapshotFile);
                     System.out.println("LLM snapshot saved: " + snapshotFile.getAbsolutePath());
                 } catch (Exception snapshotEx) {

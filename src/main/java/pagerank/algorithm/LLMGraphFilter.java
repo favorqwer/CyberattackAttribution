@@ -215,7 +215,7 @@ public class LLMGraphFilter {
         try {
             String intermediatePath = (intermediateOutputPrefix != null && !intermediateOutputPrefix.trim().isEmpty())
                     ? intermediateOutputPrefix
-                    : logFilePath.replace(".log", "_llm_raw");
+                    : logFilePath.replace(".log", "_raw");
             IterateGraph intermediateOut = new IterateGraph(filteredGraph, poiEvent, entryPoints);
             intermediateOut.exportGraph(intermediatePath);
             DotToSvg(intermediatePath + ".dot", intermediatePath + ".svg");
