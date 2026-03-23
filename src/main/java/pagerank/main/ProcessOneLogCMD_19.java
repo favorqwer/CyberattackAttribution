@@ -264,8 +264,6 @@ public class ProcessOneLogCMD_19 {
                 // 6. 找出可能的攻击入口点（Entry Points）并生成最终溯源结果
                 List<List<String>> forwardStarts = infer.getForwardStarts(detection);
                 List<String> highlightedEntries = collectHighlightedEntries(forwardStarts, importantEntries, 3);
-                IterateGraph highlightedWeightGraph = new IterateGraph(infer.graph, detection, highlightedEntries);
-                exportGraphAsSvg(highlightedWeightGraph, resultDir + "Weight_" + filename + suffix);
                 Map<String, Double> nodeReputation = IterateGraph.getNodeReputation(infer.graph);
                 boolean outputFilterGraph = true;
                 // 只保留能从 forwardStarts 正向到达 detection 的所有路径。
