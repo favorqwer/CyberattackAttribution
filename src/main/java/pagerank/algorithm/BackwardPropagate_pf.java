@@ -8,14 +8,10 @@ import org.apache.commons.math3.ml.clustering.MultiKMeansPlusPlusClusterer;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.jgrapht.alg.connectivity.ConnectivityInspector;
 import org.jgrapht.graph.DirectedPseudograph;
-import org.json.simple.JSONArray;
 import pagerank.entity.EntityNode;
 import pagerank.entity.EventEdge;
 import pagerank.entity.EventEdgeWrapper;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.PrintWriter;
 import java.math.BigDecimal;
 import java.util.*;
 
@@ -398,19 +394,6 @@ public class BackwardPropagate_pf {
             }
         }
 
-        try {
-            File file = new File(resDir + "/" + "clusterall_weights.json");
-            FileWriter fileWriter = new FileWriter(file);
-            PrintWriter printWriter = new PrintWriter(fileWriter);
-            JSONArray jsonArray = new JSONArray();
-            for (EventEdge edge : allEdges) {
-                jsonArray.add(edge.weight);
-            }
-            printWriter.write(jsonArray.toJSONString());
-            printWriter.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
     public void calculateWeights_Individual(boolean normalizeByInEdges, String weightType, String resDir) {
@@ -512,19 +495,6 @@ public class BackwardPropagate_pf {
             }
         }
 
-        try {
-            File file = new File(resDir + "/" + weightType + "_weights.txt");
-            FileWriter fileWriter = new FileWriter(file);
-            PrintWriter printWriter = new PrintWriter(fileWriter);
-            JSONArray jsonArray = new JSONArray();
-            for (Double d : finalWeights) {
-                jsonArray.add(d);
-            }
-            printWriter.write(jsonArray.toJSONString());
-            printWriter.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
     public void calculateWeights_Fanout(boolean normalizeByOutEdges, String resDir) {
@@ -544,20 +514,6 @@ public class BackwardPropagate_pf {
             finalWeights.add(getFanoutWeight(e));
         }
 
-        try {
-            File file = new File(resDir + "/" + "fanout_weights.txt");
-            FileWriter fileWriter = new FileWriter(file);
-            PrintWriter printWriter = new PrintWriter(fileWriter);
-            JSONArray jsonArray = new JSONArray();
-            for (Double d : finalWeights) {
-                jsonArray.add(d);
-            }
-            printWriter.write(jsonArray.toJSONString());
-            printWriter.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        System.out.println("Write weights to file for fanout!");
     }
 
     private List<Double> computeFinalWeights(List<EventEdge> allEdges) {

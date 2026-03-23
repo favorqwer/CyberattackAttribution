@@ -49,7 +49,6 @@ import java.util.*;
 @SuppressWarnings("Duplicates")
 public class ProcessOneLogCMD_19 {
     // 统计文件输出流
-    static OutputStream os = null;
     /**
      * run_exp_backward - 反向溯源分析核心方法
      * 
@@ -86,10 +85,9 @@ public class ProcessOneLogCMD_19 {
             String suffix, double threshold, boolean trackOrigin, String logfile, String[] IP, String detection,
             String[] highRP, String[] midRP, String[] lowRP, String filename, double detectionSize,
             Set<String> seedSources, String[] criticalEdges, String mode, String cprMode, double cprTimeWindow, JSONObject jsonlog,
-            String[] importantEntries) {
+            JSONObject entryPointsLog, String[] importantEntries) {
         try {
             // 1. 打开统计文件（用于记录每一步的节点/边数量、耗时等）
-            os = new FileOutputStream(resultDir + filename + suffix + "_stats");
 
             // 1.5 当detectionSize未指定时，从原始图（BackTrack/CPR压缩前）中自动提取
             if (detectionSize <= 0) {
@@ -109,11 +107,8 @@ public class ProcessOneLogCMD_19 {
             long end = System.currentTimeMillis();
             double timeCost = getTimeCost(start, end);
             System.out.println("BackTrack time cost is: " + timeCost);
-            os.write(("BackTrack time cost is: " + timeCost + "\n").getBytes());
             System.out.println("After Backtrack vertex number is: " + backTrack.afterBackTrack.vertexSet().size()
                     + " edge number: " + backTrack.afterBackTrack.edgeSet().size());
-            os.write(("After Backtrack vertex number is: " + backTrack.afterBackTrack.vertexSet().size()
-                    + " edge number: " + backTrack.afterBackTrack.edgeSet().size() + "\n").getBytes());
             jsonlog.put("BackTrackVertexNumber", backTrack.afterBackTrack.vertexSet().size());
             jsonlog.put("BackTrackEdgeNumber", backTrack.afterBackTrack.edgeSet().size());
             jsonlog.put("BackTrackTimeCost", timeCost);
@@ -175,11 +170,8 @@ public class ProcessOneLogCMD_19 {
             end = System.currentTimeMillis();
             timeCost = getTimeCost(start, end);
             System.out.println("Edge Merge cost is: " + timeCost);
-            os.write(("Edge Merge cost is: " + timeCost + "\n").getBytes());
             System.out.println("After CPR vertex number is: " + CPR.afterMerge.vertexSet().size() + " edge number: "
                     + CPR.afterMerge.edgeSet().size());
-            os.write(("After CPR vertex number is: " + CPR.afterMerge.vertexSet().size() + " edge number: "
-                    + CPR.afterMerge.edgeSet().size() + "\n").getBytes());
             ProcessOneLogCMD_19.putToJsonLog(jsonlog, "CPRVertexNumber",
                     String.valueOf(CPR.afterMerge.vertexSet().size()));
             ProcessOneLogCMD_19.putToJsonLog(jsonlog, "CPREdgeNumber", String.valueOf(CPR.afterMerge.edgeSet().size()));
@@ -249,7 +241,6 @@ public class ProcessOneLogCMD_19 {
             timeCost = getTimeCost(start, end);
             String timeCostInfo = String.format("Weight Calculation (%s) time cost is: ", mode) + timeCost + "\n";
             System.out.println(timeCostInfo);
-            os.write(timeCostInfo.getBytes());
             ProcessOneLogCMD_19.putToJsonLog(jsonlog, "WeightCalculationTimeCost", String.valueOf(timeCost));
 
             // 5. 执行后向 PageRank 式传播（核心溯源算法）
@@ -268,16 +259,14 @@ public class ProcessOneLogCMD_19 {
                 timeCost = getTimeCost(start, end);
                 timeCostInfo = "Propagation time cost is: " + timeCost + "\n";
                 System.out.println(timeCostInfo);
-                os.write(timeCostInfo.getBytes());
                 ProcessOneLogCMD_19.putToJsonLog(jsonlog, "PropagationTimeCost", String.valueOf(timeCost));
 
                 // 6. 找出可能的攻击入口点（Entry Points）并生成最终溯源结果
                 List<List<String>> forwardStarts = infer.getForwardStarts(detection);
                 List<String> highlightedEntries = collectHighlightedEntries(forwardStarts, importantEntries, 3);
                 IterateGraph highlightedWeightGraph = new IterateGraph(infer.graph, detection, highlightedEntries);
-                highlightedWeightGraph.exportGraph(resultDir + "Weight_" + filename + suffix);
+                exportGraphAsSvg(highlightedWeightGraph, resultDir + "Weight_" + filename + suffix);
                 Map<String, Double> nodeReputation = IterateGraph.getNodeReputation(infer.graph);
-                IterateGraph.outputTopStarts(resultDir, forwardStarts, nodeReputation);
                 boolean outputFilterGraph = true;
                 // 只保留能从 forwardStarts 正向到达 detection 的所有路径。
                 // 输出文件名叫 sysrep 开头 → 代表这是“我们系统（sysrep）”找到的攻击路径图，人工看起来最干净、最准。
@@ -285,25 +274,12 @@ public class ProcessOneLogCMD_19 {
                         filename, suffix, "1", 3, infer, outputFilterGraph, detection);
 
                 List<String> entryPoints = IterateGraph.getCandidateEntryPoint(infer.graph, detection);
-                JSONObject entryJson = new JSONObject();
-                entryJson.put("EntryPointsNumber", entryPoints.size());
                 ProcessOneLogCMD_19.putToJsonLog(jsonlog, "EntryPointsNumber", String.valueOf(entryPoints.size()));
-                JSONArray ponintsJson = new JSONArray();
-                entryPoints.stream().forEach(s -> ponintsJson.add(s));
-                entryJson.put("EntryPoints", ponintsJson);
-                File entryPointsJsonFile = new File(resultDir + filename + suffix + "_entry_points.json");
-                FileWriter jsonWriter = new FileWriter(entryPointsJsonFile);
-                jsonWriter.write(entryJson.toJSONString());
-                jsonWriter.close();
+                populateEntryPointsLog(entryPointsLog, detection, entryPoints, forwardStarts, nodeReputation,
+                        highlightedEntries, 3);
             }
         } catch (Exception e) {
             e.printStackTrace();
-        } finally {
-            try {
-                os.close();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
         }
     }
 
@@ -345,10 +321,28 @@ public class ProcessOneLogCMD_19 {
         jsonLog.put(key, value);
     }
 
+    public static void exportGraphAsSvg(IterateGraph graph, String basePath) {
+        try {
+            graph.exportGraph(basePath);
+            DotToSvg(basePath + ".dot", basePath + ".svg");
+        } catch (Exception e) {
+            System.err.println("Failed to export SVG graph: " + basePath + ".svg, reason: " + e.getMessage());
+            try {
+                Files.deleteIfExists(Paths.get(basePath + ".dot"));
+            } catch (IOException deleteEx) {
+                System.err.println("Failed to clean temporary DOT file: " + deleteEx.getMessage());
+            }
+        }
+    }
+
     public static void DotToSvg(String dotPath, String svgPath) throws Exception {
-        String dotContent = new String(Files.readAllBytes(Paths.get(dotPath)));
-        String svg = Graphviz.fromString(dotContent).render(Format.SVG).toString();
-        Files.write(Paths.get(svgPath), svg.getBytes());
+        try {
+            String dotContent = new String(Files.readAllBytes(Paths.get(dotPath)));
+            String svg = Graphviz.fromString(dotContent).render(Format.SVG).toString();
+            Files.write(Paths.get(svgPath), svg.getBytes());
+        } finally {
+            Files.deleteIfExists(Paths.get(dotPath));
+        }
     }
 
     public static void filter_graph_by_forward_category(List<List<String>> starts,
@@ -361,17 +355,11 @@ public class ProcessOneLogCMD_19 {
             if (!resFolderForFilter.exists()) {
                 resFolderForFilter.mkdir();
             }
-                File recordStarts = new File(resultDir + "forward_starts_" + filename + "_"
-                    + time + "_" + method + ".txt");
-            FileWriter fileWriter = new FileWriter(recordStarts);
-            PrintWriter printWriter = new PrintWriter(fileWriter);
-            printWriter.println("Entry Points for forward:");
             int startsNum = 0;
             List<String> allSelectedStarts = new ArrayList<>();
             for (List<String> category : starts) {
                 for (int r = 0; r < startLimitForEachCategory && r < category.size(); r++) {
                     String entry = category.get(r);
-                    printWriter.println(entry);
 
                     // 将入口点暂存在内存列表中，供后续一并生成完整图
                     allSelectedStarts.add(entry);
@@ -382,7 +370,6 @@ public class ProcessOneLogCMD_19 {
                     startsNum++;
                 }
             }
-            printWriter.close();
 
             // ====================== 生成包含所有入口的完整溯源图 ======================
             if (!allSelectedStarts.isEmpty() && outputGraph) {
@@ -397,8 +384,7 @@ public class ProcessOneLogCMD_19 {
                 String mergedPath = resFolderForFilter.getAbsolutePath() + "/" +
                     "complete_provenance_graph" + suffix;
 
-                mergedOut.exportGraph(mergedPath);
-                DotToSvg(mergedPath + ".dot", mergedPath + ".svg");
+                exportGraphAsSvg(mergedOut, mergedPath);
 
                 System.out.println("Complete provenance graph generated successfully (" + allSelectedStarts.size()
                         + " entries merged):");
@@ -433,8 +419,7 @@ public class ProcessOneLogCMD_19 {
                     String filteredPath = resFolderForFilter.getAbsolutePath() + "/" +
                             "llm_filtered_graph" + suffix;
 
-                    filteredOut.exportGraph(filteredPath);
-                    DotToSvg(filteredPath + ".dot", filteredPath + ".svg");
+                    exportGraphAsSvg(filteredOut, filteredPath);
 
                     System.out.println("LLM Filtered graph generated successfully.");
                     System.out.println("File: " + filteredPath + ".svg");
@@ -449,6 +434,88 @@ public class ProcessOneLogCMD_19 {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void populateEntryPointsLog(JSONObject entryPointsLog, String poiEvent, List<String> candidateEntryPoints,
+                                               List<List<String>> forwardStarts, Map<String, Double> nodeReputation,
+                                               List<String> highlightedEntries, int perCategoryLimit) {
+        entryPointsLog.put("POI", poiEvent);
+        entryPointsLog.put("CandidateEntryPointsCount", candidateEntryPoints == null ? 0 : candidateEntryPoints.size());
+        entryPointsLog.put("CandidateEntryPoints", toJsonArray(candidateEntryPoints));
+        entryPointsLog.put("HighlightedEntryPoints", toJsonArray(highlightedEntries));
+        entryPointsLog.put("RankedEntryPointsByCategory", buildRankedEntriesByCategory(forwardStarts, nodeReputation));
+        entryPointsLog.put("ForwardSelectedByCategory", buildSelectedEntriesByCategory(forwardStarts, perCategoryLimit));
+        entryPointsLog.put("ForwardSelectedEntryPoints", collectSelectedStarts(forwardStarts, perCategoryLimit));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static JSONObject buildRankedEntriesByCategory(List<List<String>> starts, Map<String, Double> nodeReputation) {
+        JSONObject categories = new JSONObject();
+        String[] categoryNames = new String[]{"process", "network", "file"};
+        for (int i = 0; i < categoryNames.length; i++) {
+            JSONArray entries = new JSONArray();
+            if (starts != null && i < starts.size() && starts.get(i) != null) {
+                for (String signature : starts.get(i)) {
+                    JSONObject node = new JSONObject();
+                    node.put("signature", signature);
+                    node.put("reputation", nodeReputation.getOrDefault(signature, 0.0));
+                    entries.add(node);
+                }
+            }
+            categories.put(categoryNames[i], entries);
+        }
+        return categories;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static JSONObject buildSelectedEntriesByCategory(List<List<String>> starts, int perCategoryLimit) {
+        JSONObject categories = new JSONObject();
+        String[] categoryNames = new String[]{"process", "network", "file"};
+        for (int i = 0; i < categoryNames.length; i++) {
+            JSONArray entries = new JSONArray();
+            if (starts != null && i < starts.size() && starts.get(i) != null) {
+                int limit = perCategoryLimit > 0 ? Math.min(perCategoryLimit, starts.get(i).size()) : starts.get(i).size();
+                for (int j = 0; j < limit; j++) {
+                    entries.add(starts.get(i).get(j));
+                }
+            }
+            categories.put(categoryNames[i], entries);
+        }
+        return categories;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static JSONArray collectSelectedStarts(List<List<String>> starts, int perCategoryLimit) {
+        JSONArray selected = new JSONArray();
+        LinkedHashSet<String> uniqueEntries = new LinkedHashSet<>();
+        if (starts != null) {
+            for (List<String> category : starts) {
+                if (category == null) {
+                    continue;
+                }
+                int limit = perCategoryLimit > 0 ? Math.min(perCategoryLimit, category.size()) : category.size();
+                for (int i = 0; i < limit; i++) {
+                    uniqueEntries.add(category.get(i));
+                }
+            }
+        }
+        selected.addAll(uniqueEntries);
+        return selected;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static JSONArray toJsonArray(Collection<String> values) {
+        JSONArray array = new JSONArray();
+        if (values == null) {
+            return array;
+        }
+        for (String value : values) {
+            if (value != null) {
+                array.add(value);
+            }
+        }
+        return array;
     }
 
 }

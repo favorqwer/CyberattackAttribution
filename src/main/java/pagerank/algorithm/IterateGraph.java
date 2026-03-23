@@ -168,9 +168,8 @@ public class IterateGraph {
      */
     /* input is file name output is a new dot file */
     public void exportGraph(String fileName) {
-        try {
-            String dotName = String.format("%s.dot", fileName);
-            exporter.exportGraph(inputgraph, new FileWriter(dotName));
+        try (FileWriter writer = new FileWriter(String.format("%s.dot", fileName))) {
+            exporter.exportGraph(inputgraph, writer);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -178,8 +177,8 @@ public class IterateGraph {
     }
 
     public void exportGraph(DirectedPseudograph<EntityNode, EventEdge> graph, String fileName) {
-        try {
-            exporter.exportGraph(graph, new FileWriter(String.format("%s.dot", fileName)));
+        try (FileWriter writer = new FileWriter(String.format("%s.dot", fileName))) {
+            exporter.exportGraph(graph, writer);
         } catch (Exception e) {
             e.printStackTrace();
         }

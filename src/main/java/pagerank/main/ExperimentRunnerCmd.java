@@ -3,6 +3,7 @@ package pagerank.main;
 import guru.nidi.graphviz.engine.Graphviz;
 import guru.nidi.graphviz.engine.GraphvizV8Engine;
 import org.jgrapht.graph.DirectedPseudograph;
+import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import pagerank.algorithm.GetGraph;
 import pagerank.config.GlobalConfig;
@@ -137,6 +138,9 @@ public class ExperimentRunnerCmd {
                 }
             }
 
+            JSONArray summaryExperiments = new JSONArray();
+            JSONArray entryPointExperiments = new JSONArray();
+
             for (Experiment e : experimentsBackward) {
                 File oneRes = new File(resDir, getBaseName(e.log.getName()));
                 if (!oneRes.exists()) {
@@ -152,9 +156,13 @@ public class ExperimentRunnerCmd {
 
                 JSONObject jsonLog = new JSONObject();
                 jsonLog.put("Case", e.log.getName());
+                jsonLog.put("Scenario", getBaseName(e.configFile.getName()));
                 jsonLog.put("Mode", mode);
                 jsonLog.put("CPRMode", cprMode);
                 jsonLog.put("CPRTimeWindow", cprTimeWindow);
+                JSONObject entryPointsLog = new JSONObject();
+                entryPointsLog.put("Case", e.log.getName());
+                entryPointsLog.put("Scenario", getBaseName(e.configFile.getName()));
 
                 ProcessOneLogCMD_19.run_exp_backward(
                         graphFromLog,
@@ -176,16 +184,33 @@ public class ExperimentRunnerCmd {
                         cprMode,
                         cprTimeWindow,
                         jsonLog,
+                        entryPointsLog,
                         e.getEntries()
                 );
                 logStream.close();
 
                 Timestamp currentTimestamp = getTimeStamp();
                 jsonLog.put("Timestamp", currentTimestamp.toString());
-                File entryPointsJsonFile = new File(oneRes.getAbsolutePath() + "/" + getBaseName(e.configFile.getName()) + "_json_log.json");
-                FileWriter jsonWriter = new FileWriter(entryPointsJsonFile);
-                jsonWriter.write(jsonLog.toJSONString());
-                jsonWriter.close();
+                entryPointsLog.put("Timestamp", currentTimestamp.toString());
+                summaryExperiments.add(jsonLog);
+                entryPointExperiments.add(entryPointsLog);
+            }
+
+            File oneRes = new File(resDir, getBaseName(log.getName()));
+            JSONObject summaryRoot = new JSONObject();
+            summaryRoot.put("Case", log.getName());
+            summaryRoot.put("Experiments", summaryExperiments);
+            File summaryFile = new File(oneRes, "summary.json");
+            try (FileWriter writer = new FileWriter(summaryFile)) {
+                writer.write(summaryRoot.toJSONString());
+            }
+
+            JSONObject entryPointsRoot = new JSONObject();
+            entryPointsRoot.put("Case", log.getName());
+            entryPointsRoot.put("Experiments", entryPointExperiments);
+            File entryPointsFile = new File(oneRes, "entry_points.json");
+            try (FileWriter writer = new FileWriter(entryPointsFile)) {
+                writer.write(entryPointsRoot.toJSONString());
             }
         } catch (IOException e) {
             e.printStackTrace();
