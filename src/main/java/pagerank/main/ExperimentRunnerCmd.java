@@ -16,16 +16,25 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.io.BufferedReader;
+import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 public class ExperimentRunnerCmd {
+    private static final String INTERACTIVE_FLAG = "--interactive";
+    private static final String INTERACTIVE_SHORT_FLAG = "-i";
+
     public static String mode;
     public static String cprMode;
     public static double cprTimeWindow;
@@ -63,14 +72,19 @@ public class ExperimentRunnerCmd {
         }
 
         if (args.length != 3) {
-            System.err.println("Usage: ExperimentRunnerCmd <log path> <result path> <log names,...>");
+            printUsage();
             System.exit(-1);
         }
 
         try {
             String logPath = args[0];
             String resPath = args[1];
-            String[] logs = args[2].split(";");
+            String[] logs;
+            if (isInteractiveFlag(args[2])) {
+                logs = new String[]{selectLogInteractively(logPath)};
+            } else {
+                logs = args[2].split(";");
+            }
 
             ExperimentRunnerCmd er = new ExperimentRunnerCmd(logPath, resPath, logs);
             er.run2();
@@ -255,10 +269,101 @@ public class ExperimentRunnerCmd {
         if (!logDir.exists() || !logDir.isDirectory()) {
             throw new FileNotFoundException("Invalid directory: " + logDir);
         }
-        return logDir.listFiles(logNameFilter);
+        File[] logs = logDir.listFiles(logNameFilter);
+        if (logs == null || logs.length == 0) {
+            throw new FileNotFoundException("No matching log file found in directory: " + logDir.getAbsolutePath());
+        }
+        return logs;
     }
 
-    private String getBaseName(String fileName) {
+    private static boolean isInteractiveFlag(String arg) {
+        return INTERACTIVE_FLAG.equalsIgnoreCase(arg) || INTERACTIVE_SHORT_FLAG.equalsIgnoreCase(arg);
+    }
+
+    private static void printUsage() {
+        System.err.println("Usage:");
+        System.err.println("  ExperimentRunnerCmd <log path> <result path> <log names,...>");
+        System.err.println("  ExperimentRunnerCmd <log path> <result path> " + INTERACTIVE_FLAG);
+    }
+
+    private static String selectLogInteractively(String logPath) throws IOException {
+        File[] selectableLogs = getSelectableLogs(logPath);
+        if (selectableLogs.length == 0) {
+            throw new FileNotFoundException("No traceable log files found in directory: " + new File(logPath).getAbsolutePath());
+        }
+
+        System.out.println("Available logs:");
+        for (int i = 0; i < selectableLogs.length; i++) {
+            System.out.printf(Locale.ROOT, "%d. %s%n", i + 1, selectableLogs[i].getName());
+        }
+
+        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        while (true) {
+            System.out.print("Enter a log number or file name: ");
+            String input = reader.readLine();
+            if (input == null) {
+                throw new IOException("No input received from console.");
+            }
+
+            String trimmedInput = input.trim();
+            if (trimmedInput.isEmpty()) {
+                System.out.println("Input cannot be empty. Please try again.");
+                continue;
+            }
+
+            Integer selectedIndex = tryParsePositiveInt(trimmedInput);
+            if (selectedIndex != null && selectedIndex >= 1 && selectedIndex <= selectableLogs.length) {
+                return selectableLogs[selectedIndex - 1].getName();
+            }
+
+            for (File selectableLog : selectableLogs) {
+                if (selectableLog.getName().equals(trimmedInput)) {
+                    return selectableLog.getName();
+                }
+            }
+
+            System.out.println("Invalid selection. Please enter a listed number or file name.");
+        }
+    }
+
+    private static File[] getSelectableLogs(String pathToLogs) throws FileNotFoundException {
+        File logDir = new File(pathToLogs);
+        if (!logDir.exists() || !logDir.isDirectory()) {
+            throw new FileNotFoundException("Invalid directory: " + logDir);
+        }
+
+        File[] logFiles = logDir.listFiles((dir, name) -> name.toLowerCase(Locale.ROOT).endsWith(".txt"));
+        if (logFiles == null) {
+            return new File[0];
+        }
+
+        return Arrays.stream(logFiles)
+                .filter(File::isFile)
+                .filter(ExperimentRunnerCmd::hasMatchingPropertyFile)
+                .sorted(Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER))
+                .toArray(File[]::new);
+    }
+
+    private static boolean hasMatchingPropertyFile(File logFile) {
+        File parentDir = logFile.getParentFile();
+        if (parentDir == null) {
+            return false;
+        }
+
+        String logBaseName = getBaseName(logFile.getName());
+        File[] propertyFiles = parentDir.listFiles((dir, name) -> isMatchingPropertyFile(name, logBaseName));
+        return propertyFiles != null && propertyFiles.length > 0;
+    }
+
+    private static Integer tryParsePositiveInt(String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static String getBaseName(String fileName) {
         int lastDotIndex = fileName.lastIndexOf('.');
         if (lastDotIndex == -1) {
             return fileName;
@@ -266,7 +371,7 @@ public class ExperimentRunnerCmd {
         return fileName.substring(0, lastDotIndex);
     }
 
-    private boolean isMatchingPropertyFile(String propertyFileName, String logBaseName) {
+    private static boolean isMatchingPropertyFile(String propertyFileName, String logBaseName) {
         return propertyFileName.endsWith(".property")
                 && (propertyFileName.equals(logBaseName + ".property")
                 || propertyFileName.startsWith(logBaseName + ":"));

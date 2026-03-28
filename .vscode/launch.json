@@ -11,6 +11,14 @@
         },
         {
             "type": "java",
+            "name": "Run ExperimentRunnerCmd Interactive",
+            "request": "launch",
+            "mainClass": "pagerank.main.ExperimentRunnerCmd",
+            "args": "./test ./test/result --interactive",
+            "projectName": "reptracker"
+        },
+        {
+            "type": "java",
             "name": "Run LLMFilterRunner",
             "request": "launch",
             "mainClass": "pagerank.main.LLMFilterRunner",
