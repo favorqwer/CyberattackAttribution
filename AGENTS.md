@@ -17,12 +17,41 @@ java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar \
     ./test \
     ./test/result \
     attack.txt
+
+# 3. 同时处理多个日志（使用分号分隔）
+java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar \
+    ./test \
+    ./test/result \
+    "attack.txt;cmd-inject.txt"
+
+# 4. 运行时交互选择日志
+java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar \
+    ./test \
+    ./test/result \
+    --interactive
 ```
 
 **命令行参数**：
 - `args[0]`: 日志文件所在目录路径
 - `args[1]`: 结果输出目录路径
 - `args[2]`: 日志文件名（多个用分号分隔，如"wget.txt;curl.txt"）
+
+当 `args[2]` 传入多个日志文件名时，系统会按顺序逐个处理每个日志，并在结果目录下为每个日志分别生成对应的输出子目录。
+
+当 `args[2]` 传入 `--interactive`（或 `-i`）时，系统会在启动后列出当前日志目录下可选的日志文件，用户可在运行时输入编号或文件名进行选择。
+
+如果使用 VS Code，可直接使用 `.vscode/launch.json` 中的 `Run ExperimentRunnerCmd Interactive` 启动配置，其参数等价于：
+
+```json
+{
+  "type": "java",
+  "name": "Run ExperimentRunnerCmd Interactive",
+  "request": "launch",
+  "mainClass": "pagerank.main.ExperimentRunnerCmd",
+  "args": "./test ./test/result --interactive",
+  "projectName": "reptracker"
+}
+```
 
 ## 核心概念
 

@@ -60,11 +60,40 @@ attack.backward.property
 java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar ./test ./test/result attack.txt
 ```
 
+同时处理多个日志时，可在第三个参数中使用分号分隔多个日志文件名：
+
+```bash
+java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar ./test ./test/result "attack.txt;cmd-inject.txt"
+```
+
+如果希望在运行时手动选择日志，可使用交互模式：
+
+```bash
+java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar ./test ./test/result --interactive
+```
+
 参数说明：
 
 1. 日志与案例配置所在目录
 2. 结果输出目录
 3. 日志文件名，多个文件用分号分隔
+
+当第三个参数包含多个日志文件名时，程序会按顺序逐个处理，并在结果目录下为每个日志分别生成对应的结果子目录。
+
+当第三个参数为 `--interactive` 或 `-i` 时，程序会在启动后列出当前目录下可选的日志文件，用户可以输入编号或文件名来选择要溯源的日志。
+
+如果使用 VS Code，也可以直接使用 `.vscode/launch.json` 中的 `Run ExperimentRunnerCmd Interactive` 启动配置：
+
+```json
+{
+  "type": "java",
+  "name": "Run ExperimentRunnerCmd Interactive",
+  "request": "launch",
+  "mainClass": "pagerank.main.ExperimentRunnerCmd",
+  "args": "./test ./test/result --interactive",
+  "projectName": "reptracker"
+}
+```
 
 ## 支持的权重模式
 
