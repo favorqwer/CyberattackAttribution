@@ -39,53 +39,19 @@ public class ExperimentRunnerCmd {
     public static String cprMode;
     public static double cprTimeWindow;
 
-    DirectedPseudograph<EntityNode, EventEdge> graphFromLog;
     String PathToLogs;
     String PathToRes;
     FilenameFilter logNameFilter;
 
     public static void main(String[] args) {
-        System.setProperty("polyglot.engine.WarnInterpreterOnly", "false");
-
-        PrintStream originalOut = System.out;
-        PrintStream originalErr = System.err;
-
-        try {
-            PrintStream nullStream = new PrintStream(new OutputStream() {
-                @Override
-                public void write(int b) {
-                }
-            });
-
-            System.setOut(nullStream);
-            System.setErr(nullStream);
-            Graphviz.useEngine(new GraphvizV8Engine());
-        } catch (Throwable t) {
-            // Keep startup quiet when Graphviz initialization emits warnings.
-        } finally {
-            System.setOut(originalOut);
-            System.setErr(originalErr);
-        }
-
-        for (String arg : args) {
-            System.out.println(arg);
-        }
-
-        if (args.length != 3) {
-            printUsage();
-            System.exit(-1);
-        }
+        initializeGraphvizQuietly();
+        printArgs(args);
+        validateArgs(args);
 
         try {
             String logPath = args[0];
             String resPath = args[1];
-            String[] logs;
-            if (isInteractiveFlag(args[2])) {
-                logs = new String[]{selectLogInteractively(logPath)};
-            } else {
-                logs = args[2].split(";");
-            }
-
+            String[] logs = resolveRequestedLogs(logPath, args[2]);
             ExperimentRunnerCmd er = new ExperimentRunnerCmd(logPath, resPath, logs);
             er.run2();
         } catch (Exception e) {
@@ -128,7 +94,7 @@ public class ExperimentRunnerCmd {
         PrintStream originalOut = System.out;
         PrintStream originalErr = System.err;
 
-        File resDir = makeResDir(PathToRes);
+        File resDir = ensureDirectory(new File(PathToRes), true);
         File[] logs = getLogs(PathToLogs);
 
         for (File log : logs) {
@@ -145,80 +111,16 @@ public class ExperimentRunnerCmd {
 
     private void runSingleLog(File log, File resDir, String[] localIP, PrintStream originalOut,
                               PrintStream originalErr) throws IOException {
-        List<Experiment> experimentsBackward = new ArrayList<>();
-        String logBaseName = getBaseName(log.getName());
-
-        try {
-            GetGraph generator = new GetGraph(log.getPath(), localIP);
-            generator.GenerateGraph();
-            graphFromLog = generator.getJg();
-        } catch (Exception e) {
-            throw new IOException("Failed to generate graph for log: " + log.getAbsolutePath(), e);
-        }
-
-        File[] propertyFiles = log.getParentFile().listFiles((dir, name) ->
-                isMatchingPropertyFile(name, logBaseName));
-
-        if (propertyFiles != null) {
-            for (File propertyFile : propertyFiles) {
-                experimentsBackward.add(new Experiment(log, propertyFile));
-            }
-        }
-
+        DirectedPseudograph<EntityNode, EventEdge> graphFromLog = loadGraph(log, localIP);
+        List<Experiment> experimentsBackward = loadExperiments(log);
         JSONArray summaryExperiments = new JSONArray();
         JSONArray entryPointExperiments = new JSONArray();
+        File oneRes = ensureDirectory(new File(resDir, getBaseName(log.getName())), false);
 
         for (Experiment e : experimentsBackward) {
-            File oneRes = new File(resDir, getBaseName(e.log.getName()));
-            if (!oneRes.exists()) {
-                oneRes.mkdir();
-            }
-
-            JSONObject jsonLog = new JSONObject();
-            jsonLog.put("Case", e.log.getName());
-            jsonLog.put("Scenario", getBaseName(e.configFile.getName()));
-            jsonLog.put("Mode", mode);
-            jsonLog.put("CPRMode", cprMode);
-            jsonLog.put("CPRTimeWindow", cprTimeWindow);
-            JSONObject entryPointsLog = new JSONObject();
-            entryPointsLog.put("Case", e.log.getName());
-            entryPointsLog.put("Scenario", getBaseName(e.configFile.getName()));
-
-            File logFile = new File(oneRes.getAbsolutePath() + "/" + getBaseName(e.log.getName()) + ".log");
-            try (PrintStream logStream = new PrintStream(new FileOutputStream(logFile, true))) {
-                LogStream ls = new LogStream(originalOut, logStream);
-                LogStream lse = new LogStream(originalErr, logStream);
-                System.setOut(ls);
-                System.setErr(lse);
-
-                ProcessOneLogCMD_19.run_exp_backward(
-                        graphFromLog,
-                        oneRes.getAbsolutePath() + "/",
-                        "",
-                        e.threshold,
-                        e.trackOrigin,
-                        e.log.getAbsolutePath(),
-                        localIP,
-                        e.POI,
-                        e.highRP,
-                        e.midRP,
-                        e.lowRP,
-                        getBaseName(e.log.getName()),
-                        e.detectionSize,
-                        e.getInitial(),
-                        e.criticalEdges,
-                        mode,
-                        cprMode,
-                        cprTimeWindow,
-                        jsonLog,
-                        entryPointsLog,
-                        e.getEntries()
-                );
-            } finally {
-                System.setOut(originalOut);
-                System.setErr(originalErr);
-            }
-
+            JSONObject jsonLog = createJsonLog(e);
+            JSONObject entryPointsLog = createEntryPointsLog(e);
+            runExperiment(e, graphFromLog, oneRes, localIP, originalOut, originalErr, jsonLog, entryPointsLog);
             Timestamp currentTimestamp = getTimeStamp();
             jsonLog.put("Timestamp", currentTimestamp.toString());
             entryPointsLog.put("Timestamp", currentTimestamp.toString());
@@ -226,25 +128,7 @@ public class ExperimentRunnerCmd {
             entryPointExperiments.add(entryPointsLog);
         }
 
-        File oneRes = new File(resDir, getBaseName(log.getName()));
-        if (!oneRes.exists()) {
-            oneRes.mkdir();
-        }
-        JSONObject summaryRoot = new JSONObject();
-        summaryRoot.put("Case", log.getName());
-        summaryRoot.put("Experiments", summaryExperiments);
-        File summaryFile = new File(oneRes, "summary.json");
-        try (FileWriter writer = new FileWriter(summaryFile)) {
-            writer.write(summaryRoot.toJSONString());
-        }
-
-        JSONObject entryPointsRoot = new JSONObject();
-        entryPointsRoot.put("Case", log.getName());
-        entryPointsRoot.put("Experiments", entryPointExperiments);
-        File entryPointsFile = new File(oneRes, "entry_points.json");
-        try (FileWriter writer = new FileWriter(entryPointsFile)) {
-            writer.write(entryPointsRoot.toJSONString());
-        }
+        writeCaseOutputs(log, oneRes, summaryExperiments, entryPointExperiments);
     }
 
     public static Timestamp getTimeStamp() {
@@ -270,16 +154,6 @@ public class ExperimentRunnerCmd {
         return configuredCprTimeWindow;
     }
 
-    private File makeResDir(String pathToRes) {
-        File resDir = new File(PathToRes);
-        if (!resDir.exists() || !resDir.isDirectory()) {
-            resDir.mkdir();
-        } else {
-            System.out.println("Result Directory " + pathToRes + " already exists, overwriting!");
-        }
-        return resDir;
-    }
-
     private File[] getLogs(String pathToLogs) throws FileNotFoundException {
         File logDir = new File(pathToLogs);
         if (!logDir.exists() || !logDir.isDirectory()) {
@@ -290,6 +164,48 @@ public class ExperimentRunnerCmd {
             throw new FileNotFoundException("No matching log file found in directory: " + logDir.getAbsolutePath());
         }
         return logs;
+    }
+
+    private static void initializeGraphvizQuietly() {
+        System.setProperty("polyglot.engine.WarnInterpreterOnly", "false");
+
+        PrintStream originalOut = System.out;
+        PrintStream originalErr = System.err;
+        try {
+            PrintStream nullStream = new PrintStream(new OutputStream() {
+                @Override
+                public void write(int b) {
+                }
+            });
+            System.setOut(nullStream);
+            System.setErr(nullStream);
+            Graphviz.useEngine(new GraphvizV8Engine());
+        } catch (Throwable t) {
+            // Keep startup quiet when Graphviz initialization emits warnings.
+        } finally {
+            System.setOut(originalOut);
+            System.setErr(originalErr);
+        }
+    }
+
+    private static void printArgs(String[] args) {
+        for (String arg : args) {
+            System.out.println(arg);
+        }
+    }
+
+    private static void validateArgs(String[] args) {
+        if (args.length != 3) {
+            printUsage();
+            System.exit(-1);
+        }
+    }
+
+    private static String[] resolveRequestedLogs(String logPath, String requestedLogs) throws IOException {
+        if (isInteractiveFlag(requestedLogs)) {
+            return new String[]{selectLogInteractively(logPath)};
+        }
+        return requestedLogs.split(";");
     }
 
     private static boolean isInteractiveFlag(String arg) {
@@ -342,6 +258,129 @@ public class ExperimentRunnerCmd {
         }
     }
 
+    private DirectedPseudograph<EntityNode, EventEdge> loadGraph(File log, String[] localIP) throws IOException {
+        try {
+            GetGraph generator = new GetGraph(log.getPath(), localIP);
+            generator.GenerateGraph();
+            return generator.getJg();
+        } catch (Exception e) {
+            throw new IOException("Failed to generate graph for log: " + log.getAbsolutePath(), e);
+        }
+    }
+
+    private List<Experiment> loadExperiments(File log) throws IOException {
+        List<Experiment> experiments = new ArrayList<>();
+        String logBaseName = getBaseName(log.getName());
+        File[] propertyFiles = log.getParentFile().listFiles((dir, name) ->
+                isMatchingPropertyFile(name, logBaseName));
+
+        if (propertyFiles == null) {
+            return experiments;
+        }
+
+        for (File propertyFile : propertyFiles) {
+            experiments.add(new Experiment(log, propertyFile));
+        }
+        return experiments;
+    }
+
+    private void runExperiment(Experiment experiment,
+                               DirectedPseudograph<EntityNode, EventEdge> graphFromLog,
+                               File resultDir,
+                               String[] localIP,
+                               PrintStream originalOut,
+                               PrintStream originalErr,
+                               JSONObject jsonLog,
+                               JSONObject entryPointsLog) throws IOException {
+        File logFile = new File(resultDir, getBaseName(experiment.log.getName()) + ".log");
+        runWithLogRedirect(logFile, originalOut, originalErr, () ->
+                ProcessOneLogCMD_19.run_exp_backward(
+                        graphFromLog,
+                        resultDir.getAbsolutePath() + "/",
+                        "",
+                        experiment.threshold,
+                        experiment.trackOrigin,
+                        experiment.log.getAbsolutePath(),
+                        localIP,
+                        experiment.POI,
+                        experiment.highRP,
+                        experiment.midRP,
+                        experiment.lowRP,
+                        getBaseName(experiment.log.getName()),
+                        experiment.detectionSize,
+                        experiment.getInitial(),
+                        experiment.criticalEdges,
+                        mode,
+                        cprMode,
+                        cprTimeWindow,
+                        jsonLog,
+                        entryPointsLog,
+                        experiment.getEntries()
+                ));
+    }
+
+    private void runWithLogRedirect(File logFile, PrintStream originalOut, PrintStream originalErr,
+                                    IoRunnable action) throws IOException {
+        try (PrintStream logStream = new PrintStream(new FileOutputStream(logFile, true))) {
+            LogStream ls = new LogStream(originalOut, logStream);
+            LogStream lse = new LogStream(originalErr, logStream);
+            System.setOut(ls);
+            System.setErr(lse);
+            action.run();
+        } finally {
+            System.setOut(originalOut);
+            System.setErr(originalErr);
+        }
+    }
+
+    private JSONObject createJsonLog(Experiment experiment) {
+        JSONObject jsonLog = new JSONObject();
+        jsonLog.put("Case", experiment.log.getName());
+        jsonLog.put("Scenario", getBaseName(experiment.configFile.getName()));
+        jsonLog.put("Mode", mode);
+        jsonLog.put("CPRMode", cprMode);
+        jsonLog.put("CPRTimeWindow", cprTimeWindow);
+        return jsonLog;
+    }
+
+    private JSONObject createEntryPointsLog(Experiment experiment) {
+        JSONObject entryPointsLog = new JSONObject();
+        entryPointsLog.put("Case", experiment.log.getName());
+        entryPointsLog.put("Scenario", getBaseName(experiment.configFile.getName()));
+        return entryPointsLog;
+    }
+
+    private void writeCaseOutputs(File log, File resultDir, JSONArray summaryExperiments,
+                                  JSONArray entryPointExperiments) throws IOException {
+        JSONObject summaryRoot = createCaseRoot(log.getName(), summaryExperiments);
+        writeJson(new File(resultDir, "summary.json"), summaryRoot);
+
+        JSONObject entryPointsRoot = createCaseRoot(log.getName(), entryPointExperiments);
+        writeJson(new File(resultDir, "entry_points.json"), entryPointsRoot);
+    }
+
+    private JSONObject createCaseRoot(String caseName, JSONArray experiments) {
+        JSONObject root = new JSONObject();
+        root.put("Case", caseName);
+        root.put("Experiments", experiments);
+        return root;
+    }
+
+    private void writeJson(File file, JSONObject content) throws IOException {
+        try (FileWriter writer = new FileWriter(file)) {
+            writer.write(content.toJSONString());
+        }
+    }
+
+    private File ensureDirectory(File dir, boolean printOverwriteMessage) {
+        if (!dir.exists() || !dir.isDirectory()) {
+            dir.mkdir();
+        } else if (printOverwriteMessage) {
+            System.out.println("Result Directory " + dir.getPath() + " already exists, overwriting!");
+        }
+        return dir;
+    }
+
     private static File[] getSelectableLogs(String pathToLogs) throws FileNotFoundException {
         File logDir = new File(pathToLogs);
         if (!logDir.exists() || !logDir.isDirectory()) {
@@ -391,6 +430,11 @@ public class ExperimentRunnerCmd {
         return propertyFileName.endsWith(".property")
                 && (propertyFileName.equals(logBaseName + ".property")
                 || propertyFileName.startsWith(logBaseName + ":"));
+    }
+
+    @FunctionalInterface
+    private interface IoRunnable {
+        void run() throws IOException;
     }
 
     public class LogStream extends PrintStream {
