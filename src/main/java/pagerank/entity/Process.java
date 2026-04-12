@@ -1,7 +1,6 @@
 package pagerank.entity;
 
 /**
- * Created by fang on 6/12/17.
  * the key for differentiate processes is pid(or proc.name?) and timestamp.
  */
 public class Process extends Entity {

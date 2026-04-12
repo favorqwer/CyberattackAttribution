@@ -14,8 +14,6 @@ package pagerank.entity;
  * - signature: 实体签名（用于显示和查找）
  * - reputation: 恶意度分数（0.0-1.0，1.0表示可信，0.0表示可疑）
  * 
- * @author fang
- * @date 2018/3/21
  */
 public class EntityNode{
     //Entity m;

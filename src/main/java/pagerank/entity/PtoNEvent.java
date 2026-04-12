@@ -1,8 +1,5 @@
 package pagerank.entity;
 
-/**
- * Created by fang on 7/13/17.
- */
 public class PtoNEvent extends Event {
     public static final String TYPE = "PtoN";
 

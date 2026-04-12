@@ -8,9 +8,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 
-/**
- * Created by fang on 3/26/18.
- */
 public class EntityAttributeProvider implements Function<EntityNode, Map<String, Attribute>> {
     @Override
     public Map<String, Attribute> apply(EntityNode e) {

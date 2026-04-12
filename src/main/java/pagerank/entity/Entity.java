@@ -3,7 +3,6 @@ package pagerank.entity;
 import java.io.Serializable;
 
 /**
- * Created by fang on 5/15/17.
  * the design of timestap: timestap1 seconds from epoch  timestap2: microseconds... because the joda time accuracy
  * isn't enough and the format of output of sysdig file!
  */

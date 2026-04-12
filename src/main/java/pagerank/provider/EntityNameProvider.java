@@ -4,9 +4,6 @@ import pagerank.entity.EntityNode;
 
 import java.util.function.Function;
 
-/**
- * Created by fang on 3/21/18.
- */
 public class EntityNameProvider implements Function<EntityNode, String> {
 
     @Override

@@ -36,7 +36,6 @@ import java.util.*;
  * - criticalEdge: 关键边，用于评估溯源结果的准确性
  * - entry: 预定义的入口点（用于验证）
  * 
- * @author fang
  */
 public class Experiment {
     // 配置属性对象

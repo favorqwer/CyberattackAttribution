@@ -30,8 +30,6 @@ import java.util.Set;
  * - networkProcessMap: 网络->进程事件（NtoP）
  * - fileProcessMap: 文件->进程事件（FtoP）
  * 
- * @author fang
- * @date 2017/7/28
  */
 public class ProcessTheOriginalParserOutput {
     // 进程->文件事件映射表（PtoF）

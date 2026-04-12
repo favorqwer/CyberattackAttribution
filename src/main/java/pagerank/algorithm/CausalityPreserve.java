@@ -255,10 +255,8 @@ public class CausalityPreserve {
     }
 
     /*
-     * Fang's comment: this merge method keep the causal relationship about
-     * different events, this mean it need to
-     * consider the time window and event type. For more detail, read the Professor
-     * Xiao's paper.
+     * This merge method preserves the causal relationship among different event
+     * types, so it needs to consider both the time window and the event type.
      */
     private DirectedPseudograph<EntityNode, EventEdge> applyCausalStrictMode() {
         DirectedPseudograph<EntityNode, EventEdge> merged = new DirectedPseudograph<EntityNode, EventEdge>(
@@ -420,8 +418,7 @@ public class CausalityPreserve {
         return afterMerge;
     }
 
-    // Fang's comment: merge all the edges, don't care about time window and event
-    // type
+    // Merge all edges without considering the time window or event type.
     private DirectedPseudograph<EntityNode, EventEdge> applyEndpointAggregationMode() {
         Map<EntityNode, Map<EntityNode, EventEdge>> map = new HashMap<>();
         Set<EventEdge> edgeSet = input.edgeSet();

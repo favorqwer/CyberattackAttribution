@@ -31,8 +31,6 @@ import java.util.*;
  * - 遍历过程中，父节点的时间阈值 = min(边结束时间, 子节点时间阈值)
  * - 只保留开始时间早于阈值的边
  * 
- * @author fang
- * @date 2018/3/23
  */
 public class BackTrack {
     // 原始完整依赖图
@@ -79,7 +77,7 @@ public class BackTrack {
      * @param str POI节点的signature（唯一标识）
      * @return 后向切片后的子图
      */
-    //Fang's comment this backtrack fixed all the existing issue, recommend using this one
+    // Recommended backtracking implementation that addresses previously known issues.
     public DirectedPseudograph<EntityNode, EventEdge> backTrackPOIEvent(String str){
         System.out.println("backTrackPOIEvent invoked: "+str);
         // 创建新的空图用于存储切片结果
@@ -147,7 +145,7 @@ public class BackTrack {
         return backTrack;
     }
 
-    //Fang's comment this backtrack fixed all the existing issue, recommend using this one
+    // Recommended backtracking implementation that addresses previously known issues.
     public DirectedPseudograph<EntityNode, EventEdge> backTrackPOIEventWithStep(String str){
         System.out.println("backTrackPOIEvent invoked: "+str);
         DirectedPseudograph<EntityNode, EventEdge> backTrack = new DirectedPseudograph<EntityNode, EventEdge>(EventEdge.class);
@@ -196,7 +194,7 @@ public class BackTrack {
         return backTrack;
     }
 
-    // Fang'comment: method strictly follow the paper
+    // This method follows the paper's procedure more strictly.
     public DirectedPseudograph<EntityNode, EventEdge> backTrackPOIEvent2(String str){
 
         DirectedPseudograph<EntityNode, EventEdge> backTrack = new DirectedPseudograph<EntityNode, EventEdge>(EventEdge.class);

@@ -1,6 +1,5 @@
-package pagerank.entity; /**
- * Created by fang on 6/19/17.
- */
+package pagerank.entity;
+
 import java.io.Serializable;
 import java.math.BigDecimal;
 public class Event implements Serializable {

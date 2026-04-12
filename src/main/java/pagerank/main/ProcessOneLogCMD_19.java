@@ -43,8 +43,6 @@ import java.util.*;
  * - fanout: 仅扇出权重
  * - nonmlrandom: 随机权重（基线对比）
  * 
- * @author fang
- * @date 2018/4/6
  */
 @SuppressWarnings("Duplicates")
 public class ProcessOneLogCMD_19 {

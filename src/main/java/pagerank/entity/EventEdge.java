@@ -2,9 +2,6 @@ package pagerank.entity;
 
 import java.math.BigDecimal;
 
-/**
- * Created by fang on 3/21/18.
- */
 public class EventEdge{
     private EntityNode source;
     private EntityNode sink;

@@ -4,9 +4,6 @@ import pagerank.entity.EventEdge;
 
 import java.util.function.Function;
 
-/**
- * Created by fang on 3/21/18.
- */
 public class EventEdgeProvider implements Function<EventEdge, String> {
 
     @Override

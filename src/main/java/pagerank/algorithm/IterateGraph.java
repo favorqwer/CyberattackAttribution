@@ -22,7 +22,6 @@ import pagerank.config.GlobalConfig;
  * 5. 入口点识别：根据节点声誉识别可能的攻击入口点
  * 6. 前向分析：结合后向切片和前向追踪，生成最终的攻击路径图
  * 
- * @author fang
  */
 
 import net.bytebuddy.dynamic.loading.ClassInjector;

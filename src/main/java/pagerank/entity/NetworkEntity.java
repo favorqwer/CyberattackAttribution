@@ -1,8 +1,5 @@
 package pagerank.entity;
 
-/**
- * Created by fang on 6/13/17.
- */
 public class NetworkEntity extends Entity {
     private String srcAddress;
     private String dstAddress;

@@ -85,7 +85,7 @@ public class ExperimentRunnerCmd {
         this.logNameFilter = (dir, name) -> logNameFilter.accept(dir, name) && !exclusionSet.contains(name);
     }
 
-    // Fang: for benign cases: avoid parsing the log several times.
+    // Reuse the parsed graph for a log to avoid repeated parsing across benign cases.
     public void run2() throws FileNotFoundException {
         mode = resolveMode();
         cprMode = resolveCprMode();
