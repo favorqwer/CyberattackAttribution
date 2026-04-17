@@ -34,6 +34,8 @@ public final class GlobalConfig {
     private final String weightMode;
     private final String cprMode;
     private final double cprTimeWindow;
+    private final int fdWindowSize;
+    private final int sdSourceSetLimit;
     private final boolean llmEnabled;
     private final String baseUrl;
     private final String apiKey;
@@ -67,6 +69,8 @@ public final class GlobalConfig {
         this.weightMode = getString(props, "weight_mode", "clusterall");
         this.cprMode = getString(props, "cpr_mode", "windowed_sequence");
         this.cprTimeWindow = getDouble(props, "cpr_time_window", 10.0d);
+        this.fdWindowSize = getInt(props, "fd_window_size", -1);
+        this.sdSourceSetLimit = getInt(props, "sd_source_set_limit", -1);
         this.llmEnabled = Boolean.parseBoolean(getString(props, "llm_enabled", "false"));
         this.baseUrl = getString(props, "base_url", "");
         this.apiKey = getString(props, "api_key", "");
@@ -121,6 +125,14 @@ public final class GlobalConfig {
 
     public double getCprTimeWindow() {
         return cprTimeWindow;
+    }
+
+    public int getFdWindowSize() {
+        return fdWindowSize;
+    }
+
+    public int getSdSourceSetLimit() {
+        return sdSourceSetLimit;
     }
 
     public boolean isLlmEnabled() {
