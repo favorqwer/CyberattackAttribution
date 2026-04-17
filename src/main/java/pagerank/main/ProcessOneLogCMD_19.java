@@ -140,10 +140,6 @@ public class ProcessOneLogCMD_19 {
                     CPR.applyMode(CausalityPreserve.MODE_NO_MERGE, cprTimeWindow);
                     System.out.println("CPR mode no_merge (no edge fusion)");
                     break;
-                case CausalityPreserve.MODE_PCAR:
-                    CPR.applyMode(CausalityPreserve.MODE_PCAR, cprTimeWindow);
-                    System.out.println("CPR mode pcar (standard CPR + hot-process approximation, hot window=5s, threshold=20)");
-                    break;
                 case CausalityPreserve.MODE_FD:
                     CPR.applyMode(CausalityPreserve.MODE_FD, cprTimeWindow);
                     System.out.println("CPR mode fd (paper-aligned FD: REO + RNO + 2-node CCO)");
@@ -161,7 +157,6 @@ public class ProcessOneLogCMD_19 {
                             + CausalityPreserve.MODE_ENDPOINT_AGGREGATION + ", "
                             + CausalityPreserve.MODE_WINDOWED_SEQUENCE + ", "
                             + CausalityPreserve.MODE_NO_MERGE + ", "
-                            + CausalityPreserve.MODE_PCAR + ", "
                             + CausalityPreserve.MODE_FD + ", "
                             + CausalityPreserve.MODE_SD);
             }

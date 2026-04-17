@@ -43,12 +43,8 @@ public class CausalityPreserve {
     public static final String MODE_ENDPOINT_AGGREGATION = "endpoint_aggregation";
     public static final String MODE_WINDOWED_SEQUENCE = "windowed_sequence";
     public static final String MODE_NO_MERGE = "no_merge";
-    public static final String MODE_PCAR = "pcar";
     public static final String MODE_FD = "fd";
     public static final String MODE_SD = "sd";
-
-    private static final double PCAR_HOT_WINDOW_SECONDS = 5.0d;
-    private static final int PCAR_HOT_EVENT_THRESHOLD = 20;
 
     // 输入的依赖图（后向切片后的子图）
     DirectedPseudograph<EntityNode, EventEdge> input;
@@ -87,8 +83,6 @@ public class CausalityPreserve {
                 return applyWindowedSequenceMode(windowSeconds);
             case MODE_NO_MERGE:
                 return applyNoMergeMode();
-            case MODE_PCAR:
-                return applyPcarMode(windowSeconds, PCAR_HOT_WINDOW_SECONDS, PCAR_HOT_EVENT_THRESHOLD);
             case MODE_FD:
                 return applyFdMode();
             case MODE_SD:
@@ -103,7 +97,6 @@ public class CausalityPreserve {
                                 + MODE_ENDPOINT_AGGREGATION + ", "
                                 + MODE_WINDOWED_SEQUENCE + ", "
                                 + MODE_NO_MERGE + ", "
-                                + MODE_PCAR + ", "
                                 + MODE_FD + ", "
                                 + MODE_SD);
         }
@@ -375,7 +368,7 @@ public class CausalityPreserve {
     }
 
     /**
-     * PCAR (Process-centric Causality Approximation Reduction)
+     * Endpoint aggregation notes
      *
      * 实现策略：
      * 1. 先执行标准CPR，保证基础因果保真。
@@ -384,33 +377,6 @@ public class CausalityPreserve {
      *
      * 该策略会在iBurst场景下进一步压缩边数，同时把近似误差局限在hot process邻域。
      */
-    private DirectedPseudograph<EntityNode, EventEdge> applyPcarMode(double ignoredMergeWindowSeconds,
-            double hotWindowSeconds,
-            int hotEventThreshold) {
-        DirectedPseudograph<EntityNode, EventEdge> cprGraph = applyCausalStrictMode();
-        Map<EntityNode, List<TimeInterval>> burstIntervals = detectHotProcessBursts(cprGraph, hotWindowSeconds,
-                hotEventThreshold);
-        if (burstIntervals.isEmpty()) {
-            afterMerge = cprGraph;
-            return afterMerge;
-        }
-
-        List<BurstTask> tasks = new ArrayList<>();
-        for (Map.Entry<EntityNode, List<TimeInterval>> entry : burstIntervals.entrySet()) {
-            for (TimeInterval interval : entry.getValue()) {
-                tasks.add(new BurstTask(entry.getKey(), interval));
-            }
-        }
-        tasks.sort((a, b) -> a.interval.start.compareTo(b.interval.start));
-
-        for (BurstTask task : tasks) {
-            applyPcarForBurst(cprGraph, task.hotProcess, task.interval);
-        }
-
-        afterMerge = cprGraph;
-        return afterMerge;
-    }
-
     // Merge all edges without considering the time window or event type.
     private DirectedPseudograph<EntityNode, EventEdge> applyEndpointAggregationMode() {
         Map<EntityNode, Map<EntityNode, EventEdge>> map = new HashMap<>();
@@ -442,261 +408,6 @@ public class CausalityPreserve {
         previous = previous.merge(cur);
         input.removeEdge(cur);
         return previous;
-    }
-
-    private Map<EntityNode, List<TimeInterval>> detectHotProcessBursts(
-            DirectedPseudograph<EntityNode, EventEdge> graph,
-            double hotWindowSeconds,
-            int hotEventThreshold) {
-        Map<EntityNode, List<EventEdge>> incidentByProcess = new HashMap<>();
-        for (EventEdge edge : graph.edgeSet()) {
-            if (edge.getSource().isProcessNode()) {
-                incidentByProcess.computeIfAbsent(edge.getSource(), k -> new ArrayList<>()).add(edge);
-            }
-            if (edge.getSink().isProcessNode()) {
-                incidentByProcess.computeIfAbsent(edge.getSink(), k -> new ArrayList<>()).add(edge);
-            }
-        }
-
-        BigDecimal window = new BigDecimal(hotWindowSeconds);
-        Map<EntityNode, List<TimeInterval>> burstIntervals = new HashMap<>();
-
-        for (Map.Entry<EntityNode, List<EventEdge>> entry : incidentByProcess.entrySet()) {
-            List<EventEdge> edges = entry.getValue();
-            edges.sort(Comparator.comparing(EventEdge::getStartTime));
-            Deque<EventEdge> queue = new ArrayDeque<>();
-            List<TimeInterval> intervals = new ArrayList<>();
-
-            for (EventEdge current : edges) {
-                queue.addLast(current);
-                while (!queue.isEmpty()) {
-                    BigDecimal span = current.getStartTime().subtract(queue.peekFirst().getStartTime());
-                    if (span.compareTo(window) > 0) {
-                        queue.removeFirst();
-                    } else {
-                        break;
-                    }
-                }
-
-                if (queue.size() >= hotEventThreshold) {
-                    BigDecimal intervalStart = queue.peekFirst().getStartTime();
-                    BigDecimal intervalEnd = current.getStartTime();
-                    appendOrMergeInterval(intervals, new TimeInterval(intervalStart, intervalEnd));
-                }
-            }
-
-            if (!intervals.isEmpty()) {
-                burstIntervals.put(entry.getKey(), intervals);
-            }
-        }
-
-        return burstIntervals;
-    }
-
-    private void applyPcarForBurst(DirectedPseudograph<EntityNode, EventEdge> graph,
-            EntityNode hotProcess,
-            TimeInterval burstInterval) {
-        Set<EntityNode> egoNet = buildEgoNet(graph, hotProcess, burstInterval);
-        if (egoNet.isEmpty()) {
-            return;
-        }
-
-        List<EventEdge> stream = collectEgoStream(graph, egoNet, burstInterval);
-        if (stream.isEmpty()) {
-            return;
-        }
-
-        BigDecimal inDeadline = null;
-        BigDecimal outDeadline = null;
-        Map<AggregableKey, Deque<EventEdge>> stacks = new HashMap<>();
-
-        for (EventEdge edge : stream) {
-            if (!graph.containsEdge(edge)) {
-                continue;
-            }
-
-            boolean srcIn = egoNet.contains(edge.getSource());
-            boolean dstIn = egoNet.contains(edge.getSink());
-
-            if (!srcIn && dstIn) {
-                inDeadline = edge.getEndTime();
-                continue;
-            }
-            if (srcIn && !dstIn) {
-                outDeadline = edge.getEndTime();
-                continue;
-            }
-            if (!srcIn) {
-                continue;
-            }
-
-            clearStateForPcarEdge(graph, hotProcess, edge, inDeadline, outDeadline, stacks);
-        }
-    }
-
-    private Set<EntityNode> buildEgoNet(DirectedPseudograph<EntityNode, EventEdge> graph,
-            EntityNode hotProcess,
-            TimeInterval interval) {
-        Set<EntityNode> egoNet = new HashSet<>();
-        egoNet.add(hotProcess);
-
-        for (EventEdge edge : graph.edgeSet()) {
-            if (!overlaps(edge, interval)) {
-                continue;
-            }
-            if (edge.getSource().equals(hotProcess)) {
-                egoNet.add(edge.getSink());
-            }
-            if (edge.getSink().equals(hotProcess)) {
-                egoNet.add(edge.getSource());
-            }
-        }
-
-        return egoNet;
-    }
-
-    private List<EventEdge> collectEgoStream(DirectedPseudograph<EntityNode, EventEdge> graph,
-            Set<EntityNode> egoNet,
-            TimeInterval interval) {
-        List<EventEdge> stream = new ArrayList<>();
-        for (EventEdge edge : graph.edgeSet()) {
-            if (!overlaps(edge, interval)) {
-                continue;
-            }
-            if (egoNet.contains(edge.getSource()) || egoNet.contains(edge.getSink())) {
-                stream.add(edge);
-            }
-        }
-        stream.sort((a, b) -> {
-            int startCmp = a.getStartTime().compareTo(b.getStartTime());
-            if (startCmp != 0) {
-                return startCmp;
-            }
-            return a.getEndTime().compareTo(b.getEndTime());
-        });
-        return stream;
-    }
-
-    private void clearStateForPcarEdge(DirectedPseudograph<EntityNode, EventEdge> graph,
-            EntityNode hotProcess,
-            EventEdge edge,
-            BigDecimal inDeadline,
-            BigDecimal outDeadline,
-            Map<AggregableKey, Deque<EventEdge>> stacks) {
-        AggregableKey key = new AggregableKey(edge.getSource(), edge.getSink(), edge.getEvent());
-        Deque<EventEdge> stack = stacks.computeIfAbsent(key, k -> new ArrayDeque<>());
-
-        if (stack.isEmpty()) {
-            stack.push(edge);
-            return;
-        }
-
-        EventEdge previous = stack.pop();
-        boolean mergeAllowed;
-        if (edge.getSource().equals(hotProcess)) {
-            mergeAllowed = pcarCheck(graph, previous, edge, inDeadline, true);
-        } else if (edge.getSink().equals(hotProcess)) {
-            mergeAllowed = pcarCheck(graph, previous, edge, outDeadline, false);
-        } else {
-            mergeAllowed = true;
-        }
-
-        if (mergeAllowed) {
-            previous.merge(edge);
-            graph.removeEdge(edge);
-            stack.push(previous);
-            return;
-        }
-
-        stack.push(previous);
-        stack.push(edge);
-    }
-
-    private boolean pcarCheck(DirectedPseudograph<EntityNode, EventEdge> graph,
-            EventEdge previous,
-            EventEdge current,
-            BigDecimal deadline,
-            boolean isOutDirection) {
-        if (deadline != null && deadline.compareTo(previous.getEndTime()) > 0) {
-            return false;
-        }
-
-        if (isOutDirection) {
-            return forwardCheck(graph, previous, current, previous.getSink());
-        }
-        return backwardCheck(graph, previous, current, previous.getSource());
-    }
-
-    private boolean overlaps(EventEdge edge, TimeInterval interval) {
-        return edge.getEndTime().compareTo(interval.start) >= 0
-                && edge.getStartTime().compareTo(interval.end) <= 0;
-    }
-
-    private void appendOrMergeInterval(List<TimeInterval> intervals, TimeInterval candidate) {
-        if (intervals.isEmpty()) {
-            intervals.add(candidate);
-            return;
-        }
-
-        TimeInterval last = intervals.get(intervals.size() - 1);
-        if (candidate.start.compareTo(last.end) <= 0) {
-            if (candidate.end.compareTo(last.end) > 0) {
-                last.end = candidate.end;
-            }
-        } else {
-            intervals.add(candidate);
-        }
-    }
-
-    private static final class TimeInterval {
-        private final BigDecimal start;
-        private BigDecimal end;
-
-        private TimeInterval(BigDecimal start, BigDecimal end) {
-            this.start = start;
-            this.end = end;
-        }
-    }
-
-    private static final class BurstTask {
-        private final EntityNode hotProcess;
-        private final TimeInterval interval;
-
-        private BurstTask(EntityNode hotProcess, TimeInterval interval) {
-            this.hotProcess = hotProcess;
-            this.interval = interval;
-        }
-    }
-
-    private static final class AggregableKey {
-        private final EntityNode source;
-        private final EntityNode sink;
-        private final String event;
-
-        private AggregableKey(EntityNode source, EntityNode sink, String event) {
-            this.source = source;
-            this.sink = sink;
-            this.event = event;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) {
-                return true;
-            }
-            if (!(o instanceof AggregableKey)) {
-                return false;
-            }
-            AggregableKey that = (AggregableKey) o;
-            return Objects.equals(source, that.source)
-                    && Objects.equals(sink, that.sink)
-                    && Objects.equals(event, that.event);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(source, sink, event);
-        }
     }
 
     private static final class RelationKey {
