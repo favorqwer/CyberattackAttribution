@@ -282,7 +282,39 @@ public class SysdigOutputParserNoRegex implements SysdigOutputParser{
     }
 
     @Override
-    public void afterBuilding() {}
+    public void afterBuilding() {
+        clearMap(files);
+        clearMap(processes);
+        clearMap(networks);
+        clearMap(pfEvent);
+        clearMap(pnEvent);
+        clearMap(ppEvent);
+        clearMap(npEvent);
+        clearMap(fpEvent);
+        clearMap(answering);
+        clearMap(incompleteEvents);
+        clearMap(backFlow);
+        clearMap(forwardFlow);
+
+        files = null;
+        processes = null;
+        networks = null;
+        pfEvent = null;
+        pnEvent = null;
+        ppEvent = null;
+        npEvent = null;
+        fpEvent = null;
+        answering = null;
+        incompleteEvents = null;
+        backFlow = null;
+        forwardFlow = null;
+    }
+
+    private void clearMap(Map<?, ?> map) {
+        if (map != null) {
+            map.clear();
+        }
+    }
 
     private void processEvent(LogEntry end) throws UnknownEventException {
         long matchStart = System.nanoTime();

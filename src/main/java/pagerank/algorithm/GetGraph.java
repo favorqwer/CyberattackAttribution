@@ -27,6 +27,7 @@ public class GetGraph {
 
     private final Map<Long, EntityNode> entityNodeMap;
     private final ProcessTheOriginalParserOutput sysdigProcess;
+    private boolean graphGenerated;
 
     public EntityNode POIEvent;
     private IterateGraph iter;
@@ -36,23 +37,28 @@ public class GetGraph {
         this.jg = new DirectedPseudograph<>(EventEdge.class);
         this.entityNodeMap = new HashMap<>();
         this.sysdigProcess = new ProcessTheOriginalParserOutput(path, localIP);
+        this.graphGenerated = false;
     }
 
     public DirectedPseudograph<EntityNode, EventEdge> getJg() {
-        if (jg == null) {
+        if (!graphGenerated) {
             GenerateGraph();
-            sysdigProcess.getParser().afterBuilding();
         }
         return jg;
     }
 
     public void GenerateGraph() {
+        if (graphGenerated) {
+            return;
+        }
         addFileToProcessEvent(sysdigProcess.getFileProcessMap());
         addNetworkToProcessEvent(sysdigProcess.getNetworkProcessMap());
         addProcessToFileEvent(sysdigProcess.getProcessFileMap());
         addProcessToProcessEvent(sysdigProcess.getProcessProcessMap());
         addProcessToNetworkEvent(sysdigProcess.getProcessNetworkMap());
         assignEdgeId();
+        graphGenerated = true;
+        sysdigProcess.afterGraphBuilt();
     }
 
     private void assignEdgeId() {
@@ -124,9 +130,7 @@ public class GetGraph {
     }
 
     public void exportGraph(String file) {
-        if (jg == null) {
-            GenerateGraph();
-        }
+        getJg();
         iter = new IterateGraph(jg);
         iter.exportGraph(file);
     }

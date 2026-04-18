@@ -51,7 +51,7 @@ public class BackTrack {
      */
     public BackTrack(DirectedPseudograph<EntityNode, EventEdge> input){
         // 深拷贝原始图，避免修改影响原始数据
-        originalGraph = (DirectedPseudograph<EntityNode, EventEdge>)input.clone();
+        originalGraph = input;
         // 创建图遍历工具
         iterateGraph = new IterateGraph(originalGraph);
         stepInfo = new HashMap<>();

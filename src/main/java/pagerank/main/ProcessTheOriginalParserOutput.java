@@ -104,6 +104,35 @@ public class ProcessTheOriginalParserOutput {
 
     public SysdigOutputParser getParser() {return parser;}
 
+    public void afterGraphBuilt() {
+        clearMap(processFileMap);
+        clearMap(processNetworkMap);
+        clearMap(processProcessMap);
+        clearMap(networkProcessMap);
+        clearMap(fileProcessMap);
+        clearMap(pnmap);
+        clearMap(npmap);
+
+        processFileMap = null;
+        processNetworkMap = null;
+        processProcessMap = null;
+        networkProcessMap = null;
+        fileProcessMap = null;
+        pnmap = null;
+        npmap = null;
+
+        if (parser != null) {
+            parser.afterBuilding();
+            parser = null;
+        }
+    }
+
+    private void clearMap(Map<?, ?> map) {
+        if (map != null) {
+            map.clear();
+        }
+    }
+
     /*reverse the network and process event according to the information flow*/
     public void reverseSourceAndSink(){
         Set<String> keys = pnmap.keySet();

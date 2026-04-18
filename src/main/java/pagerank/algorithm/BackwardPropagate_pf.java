@@ -28,13 +28,9 @@ public class BackwardPropagate_pf {
     // 图遍历工具
     IterateGraph graphIterator;
     // 最终综合权重
-    Map<Long, Double> weights;
     // 时间维度权重
-    Map<Long, Double> timeWeights; // sink -> source
     // 数据量维度权重
-    Map<Long, Double> amountWeights;
     // 结构维度权重（扇出度）
-    Map<Long, Double> structureWeights;
     // 阻尼因子（PageRank算法参数，默认0.85）
     double dumpingFactor;
     // 检测到的数据量（用于计算数据量权重）
@@ -46,6 +42,12 @@ public class BackwardPropagate_pf {
     // 前向分析工具
     ForwardAnalysis forwardAnalysis;
 
+    private enum WeightDimension {
+        TIME,
+        AMOUNT,
+        STRUCTURE
+    }
+
     /**
      * 构造函数
      * 
@@ -54,10 +56,6 @@ public class BackwardPropagate_pf {
     public BackwardPropagate_pf(DirectedPseudograph<EntityNode, EventEdge> input) {
         graph = input;
         graphIterator = new IterateGraph(graph);
-        weights = new HashMap<>();
-        timeWeights = new HashMap<>();
-        amountWeights = new HashMap<>();
-        structureWeights = new HashMap<>();
         POITime = getPOITime();
         dumpingFactor = 0.85; // PageRank标准阻尼因子
         detectionSize = 0;
@@ -69,6 +67,41 @@ public class BackwardPropagate_pf {
     Map<String, Integer> indegree;
     // 出度映射（节点签名 -> 出边数量）
     Map<String, Integer> outdegree;
+
+    private void initializeFeatureWeights(EventEdge edge) {
+        edge.timeWeight = getTimeWeight(edge);
+        edge.amountWeight = getAmountWeight(edge);
+        edge.structureWeight = getStructureWeight(edge);
+    }
+
+    private double getEdgeWeight(EventEdge edge, WeightDimension dimension) {
+        switch (dimension) {
+            case TIME:
+                return edge.timeWeight;
+            case AMOUNT:
+                return edge.amountWeight;
+            case STRUCTURE:
+                return edge.structureWeight;
+            default:
+                throw new IllegalArgumentException("Unsupported weight dimension: " + dimension);
+        }
+    }
+
+    private void setEdgeWeight(EventEdge edge, WeightDimension dimension, double value) {
+        switch (dimension) {
+            case TIME:
+                edge.timeWeight = value;
+                return;
+            case AMOUNT:
+                edge.amountWeight = value;
+                return;
+            case STRUCTURE:
+                edge.structureWeight = value;
+                return;
+            default:
+                throw new IllegalArgumentException("Unsupported weight dimension: " + dimension);
+        }
+    }
 
     /**
      * 设置检测数据量
@@ -142,45 +175,31 @@ public class BackwardPropagate_pf {
     public void calculateWeights() {
         System.out.println("calculateWeights invoked");
         Set<EntityNode> vertexSet = graph.vertexSet();
-        // initializeWeights();
-
-        // Compute individual weights
         for (EntityNode n : vertexSet) {
-            Set<EventEdge> inEdges = graph.incomingEdgesOf(n);
-            for (EventEdge inEdge : inEdges) {
-                double timeWeight = getTimeWeight(inEdge);
-                double dataWeight = getAmountWeight(inEdge);
-                double structureWeight = getStructureWeight(inEdge);
-                long edgeID = inEdge.id;
-                timeWeights.put(edgeID, timeWeight);
-                amountWeights.put(edgeID, dataWeight);
-                structureWeights.put(edgeID, structureWeight);
+            for (EventEdge inEdge : graph.incomingEdgesOf(n)) {
+                initializeFeatureWeights(inEdge);
             }
         }
 
         // Normalize three weights by outgoing edges
         for (EntityNode n : vertexSet) {
-            double structureTotal = getStructureWeightTotal(n);
+            double structureTotal = getWeightTotal(n, WeightDimension.STRUCTURE);
             // avoid bug caused by 0/0
             if (structureTotal < 1e-8) {
                 structureTotal = 1.0;
             }
 
-            double amountTotal = getAmountWeightTotal(n);
-            double timeTotal = getTimeWeightTotal(n);
+            double amountTotal = getWeightTotal(n, WeightDimension.AMOUNT);
+            double timeTotal = getWeightTotal(n, WeightDimension.TIME);
             Set<EventEdge> outgoing = graph.outgoingEdgesOf(n);
             for (EventEdge e : outgoing) {
-                e.timeWeight = timeWeights.get(e.id) / timeTotal;
-                e.amountWeight = amountWeights.get(e.id) / amountTotal;
-                e.structureWeight = structureWeights.get(e.id) / structureTotal;
+                e.timeWeight = e.timeWeight / timeTotal;
+                e.amountWeight = e.amountWeight / amountTotal;
+                e.structureWeight = e.structureWeight / structureTotal;
 
                 if (seedSources.contains(e.getSource().getSignature())) { // the seed's structure weight is always 1.0
                     e.structureWeight = 1.0;
                 }
-
-                timeWeights.put(e.id, e.timeWeight);
-                amountWeights.put(e.id, e.amountWeight);
-                structureWeights.put(e.id, e.structureWeight);
             }
         }
 
@@ -200,7 +219,6 @@ public class BackwardPropagate_pf {
 
                 for (EventEdge outEdge : outEdges) {
                     outEdge.weight = (0.5 * outEdge.timeWeight + outEdge.structureWeight * 0.5) / wTotal;
-                    weights.put(outEdge.id, outEdge.weight);
                 }
             } else {
                 // Calculate total weight in order to normalize
@@ -212,7 +230,6 @@ public class BackwardPropagate_pf {
                 for (EventEdge outEdge : outEdges) {
                     outEdge.weight = ((0.334 * outEdge.timeWeight + 0.333 * outEdge.structureWeight
                             + 0.333 * outEdge.amountWeight) / wTotal) * 0.99;
-                    weights.put(outEdge.id, outEdge.weight);
                 }
             }
         }
@@ -221,45 +238,31 @@ public class BackwardPropagate_pf {
     public void calculateWeightsRandom() {
         System.out.println("calculateWeightsRandom invoked");
         Set<EntityNode> vertexSet = graph.vertexSet();
-        // initializeWeights();
-
-        // Compute individual weights
         for (EntityNode n : vertexSet) {
-            Set<EventEdge> inEdges = graph.incomingEdgesOf(n);
-            for (EventEdge inEdge : inEdges) {
-                double timeWeight = getTimeWeight(inEdge);
-                double dataWeight = getAmountWeight(inEdge);
-                double structureWeight = getStructureWeight(inEdge);
-                long edgeID = inEdge.id;
-                timeWeights.put(edgeID, timeWeight);
-                amountWeights.put(edgeID, dataWeight);
-                structureWeights.put(edgeID, structureWeight);
+            for (EventEdge inEdge : graph.incomingEdgesOf(n)) {
+                initializeFeatureWeights(inEdge);
             }
         }
 
         // Normalize three weights by outgoing edges
         for (EntityNode n : vertexSet) {
-            double structureTotal = getStructureWeightTotal(n);
+            double structureTotal = getWeightTotal(n, WeightDimension.STRUCTURE);
             // avoid bug caused by 0/0
             if (structureTotal < 1e-8) {
                 structureTotal = 1.0;
             }
 
-            double amountTotal = getAmountWeightTotal(n);
-            double timeTotal = getTimeWeightTotal(n);
+            double amountTotal = getWeightTotal(n, WeightDimension.AMOUNT);
+            double timeTotal = getWeightTotal(n, WeightDimension.TIME);
             Set<EventEdge> outgoing = graph.outgoingEdgesOf(n);
             for (EventEdge e : outgoing) {
-                e.timeWeight = timeWeights.get(e.id) / timeTotal;
-                e.amountWeight = amountWeights.get(e.id) / amountTotal;
-                e.structureWeight = structureWeights.get(e.id) / structureTotal;
+                e.timeWeight = e.timeWeight / timeTotal;
+                e.amountWeight = e.amountWeight / amountTotal;
+                e.structureWeight = e.structureWeight / structureTotal;
 
                 if (seedSources.contains(e.getSource().getSignature())) { // the seed's structure weight is always 1.0
                     e.structureWeight = 1.0;
                 }
-
-                timeWeights.put(e.id, e.timeWeight);
-                amountWeights.put(e.id, e.amountWeight);
-                structureWeights.put(e.id, e.structureWeight);
             }
         }
 
@@ -281,7 +284,6 @@ public class BackwardPropagate_pf {
                 for (EventEdge outEdge : outEdges) {
                     outEdge.weight = (weightsCof[0] * outEdge.timeWeight + outEdge.structureWeight * weightsCof[1])
                             / wTotal;
-                    weights.put(outEdge.id, outEdge.weight);
                 }
             } else {
                 // Calculate total weight in order to normalize
@@ -294,28 +296,27 @@ public class BackwardPropagate_pf {
                 for (EventEdge outEdge : outEdges) {
                     outEdge.weight = ((outEdge.timeWeight * weightsCof[0] + outEdge.structureWeight * weightsCof[1]
                             + outEdge.amountWeight * weightsCof[2]) / wTotal) * 0.99;
-                    weights.put(outEdge.id, outEdge.weight);
                 }
             }
         }
     }
 
     private double getStructureWeightTotal(EntityNode n) {
-        return getWeightTotal(n, structureWeights);
+        return getWeightTotal(n, WeightDimension.STRUCTURE);
     }
 
     private double getAmountWeightTotal(EntityNode n) {
-        return getWeightTotal(n, amountWeights);
+        return getWeightTotal(n, WeightDimension.AMOUNT);
     }
 
     private double getTimeWeightTotal(EntityNode n) {
-        return getWeightTotal(n, timeWeights);
+        return getWeightTotal(n, WeightDimension.TIME);
     }
 
-    private double getWeightTotal(EntityNode node, Map<Long, Double> weightMap) {
+    private double getWeightTotal(EntityNode node, WeightDimension dimension) {
         double total = 0.0;
         for (EventEdge edge : graph.outgoingEdgesOf(node)) {
-            total += weightMap.get(edge.id);
+            total += getEdgeWeight(edge, dimension);
         }
         return total;
     }
@@ -323,33 +324,23 @@ public class BackwardPropagate_pf {
     public void calculateWeights_ML_dec(boolean normalizeByOutEdges, int mode, String resDir) {
         System.out.println("calculateWeights_ML_dec invoked: " + normalizeByOutEdges);
         Set<EntityNode> vertexSet = graph.vertexSet();
-        // initializeWeights();
-
-        // Compute individual weights
         Set<EventEdge> allGraphEdges = graph.edgeSet();
         for (EventEdge edge : allGraphEdges) {
-            timeWeights.put(edge.id, getTimeWeight(edge));
-            amountWeights.put(edge.id, getAmountWeight(edge));
-            structureWeights.put(edge.id, getStructureWeight(edge));
-
-            // printEdgeWeights(edge);
+            initializeFeatureWeights(edge);
         }
 
         // Pre-process individual weights
-        preprocessWeights(timeWeights, normalizeByOutEdges);
-        preprocessWeights(amountWeights, normalizeByOutEdges);
-        preprocessWeights(structureWeights, normalizeByOutEdges);
+        preprocessWeights(WeightDimension.TIME, normalizeByOutEdges);
+        preprocessWeights(WeightDimension.AMOUNT, normalizeByOutEdges);
+        preprocessWeights(WeightDimension.STRUCTURE, normalizeByOutEdges);
 
         // Additional pre-processing for structureWeights for seeds + store standardized weights
         for (EventEdge edge : allGraphEdges) {
-            double structureWeightValue = structureWeights.get(edge.id);
+            double structureWeightValue = edge.structureWeight;
             if (seedSources.contains(edge.getSink().getSignature())) {
                 structureWeightValue = 1.0;
-                structureWeights.put(edge.id, structureWeightValue);
             }
 
-            edge.timeWeight = timeWeights.get(edge.id);
-            edge.amountWeight = amountWeights.get(edge.id);
             edge.structureWeight = structureWeightValue;
         }
 
@@ -387,10 +378,6 @@ public class BackwardPropagate_pf {
                 // System.out.println("Normalization factor " + weightTotalForOutEdges);
 
                 outEdge.weight = (outEdge.weight / weightTotalForOutEdges) * 0.99;
-                // System.out.println("After normalization " + inEdge.weight);
-
-                // Store normalized weights in the "weights" map
-                weights.put(outEdge.id, outEdge.weight);
             }
         }
 
@@ -400,26 +387,20 @@ public class BackwardPropagate_pf {
         System.out.println(
                 "calculateWeights_Individual invoked: " + normalizeByInEdges + " for featureType: " + weightType);
         Set<EntityNode> vertexSet = graph.vertexSet();
-        // initializeWeights();
-
-        // Compute individual weights
         Set<EventEdge> inEdges;
         for (EntityNode n : vertexSet) {
             inEdges = graph.incomingEdgesOf(n);
             for (EventEdge inEdge : inEdges) {
-                timeWeights.put(inEdge.id, getTimeWeight(inEdge));
-                // amountWeights.put(inEdge.id, getAmountWeight(inEdge));
-                // structureWeights.put(inEdge.id, getStructureWeight(inEdge));
-                amountWeights.put(inEdge.id, getAmountWeight(inEdge));
-                structureWeights.put(inEdge.id, 0.0);
-                // printEdgeWeights(inEdge);
+                inEdge.timeWeight = getTimeWeight(inEdge);
+                inEdge.amountWeight = getAmountWeight(inEdge);
+                inEdge.structureWeight = 0.0;
             }
         }
 
         // Pre-process individual weights
-        preprocessWeights(timeWeights, normalizeByInEdges);
-        preprocessWeights(amountWeights, normalizeByInEdges);
-        preprocessWeights(structureWeights, normalizeByInEdges);
+        preprocessWeights(WeightDimension.TIME, normalizeByInEdges);
+        preprocessWeights(WeightDimension.AMOUNT, normalizeByInEdges);
+        preprocessWeights(WeightDimension.STRUCTURE, normalizeByInEdges);
 
         // Additional pre-processing for structureWeights for seeds
         for (EntityNode n : vertexSet) {
@@ -434,7 +415,7 @@ public class BackwardPropagate_pf {
                     // inEdge.getSink().getID() + " " + inEdge.getSink().getSignature() + ")");
                     // System.out.println("Normalized structureWeight before hard set: " +
                     // structureWeights.get(inEdge.id));
-                    structureWeights.put(inEdge.id, 1.0);
+                    inEdge.structureWeight = 1.0;
                     // System.out.println("Normalized structureWeight after hard set: " +
                     // structureWeights.get(inEdge.id));
                 }
@@ -445,9 +426,7 @@ public class BackwardPropagate_pf {
         for (EntityNode n : vertexSet) {
             inEdges = graph.incomingEdgesOf(n);
             for (EventEdge inEdge : inEdges) {
-                inEdge.timeWeight = timeWeights.get(inEdge.id);
-                inEdge.amountWeight = amountWeights.get(inEdge.id);
-                inEdge.structureWeight = structureWeights.get(inEdge.id);
+                // Weights are already stored directly on EventEdge.
             }
         }
 
@@ -488,10 +467,6 @@ public class BackwardPropagate_pf {
                 // System.out.println("Normalization factor " + weightTotalForOutEdges);
 
                 outEdge.weight /= weightTotalForOutEdges;
-                // System.out.println("After normalization " + inEdge.weight);
-
-                // Store normalized weights in the "weights" map
-                weights.put(outEdge.id, outEdge.weight);
             }
         }
 
@@ -1204,59 +1179,49 @@ public class BackwardPropagate_pf {
     // }
     // }
 
-    private void preprocessWeights(Map<Long, Double> weights, boolean normalizeByOutEdges) {
+    private void preprocessWeights(WeightDimension dimension, boolean normalizeByOutEdges) {
         if (normalizeByOutEdges) {
             // Normalize by outgoing edges
-            normalizeWeightsByOutEdges(weights);
+            normalizeWeightsByOutEdges(dimension);
         } else {
             // Standardize weights
-            standardizeWeights(weights);
+            standardizeWeights(dimension);
         }
     }
 
-    private void standardizeWeights(Map<Long, Double> weights) {
+    private void standardizeWeights(WeightDimension dimension) {
         // Standardization criterion: (x-mean)/std
         DescriptiveStatistics stats = new DescriptiveStatistics();
-        // for (long sinkNodeID: weights.keySet()) {
-        // for (long sourceNodeID: weights.get(sinkNodeID).keySet()) {
-        // stats.addValue(weights.get(sinkNodeID).get(sourceNodeID));
-        // }
-        // }
-        for (Long edgeID : weights.keySet()) {
-            stats.addValue(weights.get(edgeID));
+        for (EventEdge edge : graph.edgeSet()) {
+            stats.addValue(getEdgeWeight(edge, dimension));
         }
         double mean = stats.getMean();
         double std = stats.getStandardDeviation();
-        double standardizedWeight;
-        // for (long sinkNodeID: weights.keySet()) {
-        // for (long sourceNodeID: weights.get(sinkNodeID).keySet()) {
-        // standardizedWeight = (weights.get(sinkNodeID).get(sourceNodeID)-mean)/std;
-        //// System.out.println("Before standardize: " +
-        // weights.get(sinkNodeID).get(sourceNodeID) + ", After standardize: " +
-        // standardizedWeight);
-        // weights.get(sinkNodeID).put(sourceNodeID, standardizedWeight);
-        // }
-        // }
+        if (Math.abs(std) < 1e-12) {
+            for (EventEdge edge : graph.edgeSet()) {
+                setEdgeWeight(edge, dimension, 0.0);
+            }
+            return;
+        }
 
-        for (long edgeID : weights.keySet()) {
-            standardizedWeight = (weights.get(edgeID) - mean) / std;
-            weights.put(edgeID, standardizedWeight);
+        for (EventEdge edge : graph.edgeSet()) {
+            double standardizedWeight = (getEdgeWeight(edge, dimension) - mean) / std;
+            setEdgeWeight(edge, dimension, standardizedWeight);
         }
     }
 
-    private void normalizeWeightsByOutEdges(Map<Long, Double> weights) {
+    private void normalizeWeightsByOutEdges(WeightDimension dimension) {
         for (EntityNode n : graph.vertexSet()) {
             Set<EventEdge> outgoing = graph.outgoingEdgesOf(n);
             double weightTotal = 0.0;
             for (EventEdge out : outgoing) {
-                weightTotal += weights.get(out.id);
+                weightTotal += getEdgeWeight(out, dimension);
             }
 
             if (weightTotal > Double.MIN_VALUE) {
-                double normalizedWeight;
                 for (EventEdge out : outgoing) {
-                    normalizedWeight = weights.get(out.id) / weightTotal;
-                    weights.put(out.id, normalizedWeight);
+                    double normalizedWeight = getEdgeWeight(out, dimension) / weightTotal;
+                    setEdgeWeight(out, dimension, normalizedWeight);
                 }
             }
         }
@@ -1338,9 +1303,9 @@ public class BackwardPropagate_pf {
     private void printEdgeWeights(EventEdge edge) {
         System.out.println("EventEdge " + edge.getID() + " (" + edge.getSource().getID() + " "
                 + edge.getSource().getSignature() + " ->" + edge.getEvent() + " " + edge.getSink().getID() + " "
-                + edge.getSink().getSignature() + ")" + "\t\t\t timeWeight:" + timeWeights.get(edge.id)
-                + " amountWeight: " + amountWeights.get(edge.id) + " structureWeight: " + structureWeights.get(edge.id)
-                + " finalWeight: " + weights.get(edge.id));
+                + edge.getSink().getSignature() + ")" + "\t\t\t timeWeight:" + edge.timeWeight
+                + " amountWeight: " + edge.amountWeight + " structureWeight: " + edge.structureWeight
+                + " finalWeight: " + edge.weight);
     }
 
     // private void printClusterResults(String clusterMethod,

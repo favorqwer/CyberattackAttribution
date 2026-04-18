@@ -60,7 +60,7 @@ public class CausalityPreserve {
      */
     public CausalityPreserve(DirectedPseudograph<EntityNode, EventEdge> input) {
         // 深拷贝输入图，避免修改原始数据
-        this.input = (DirectedPseudograph<EntityNode, EventEdge>) input.clone();
+        this.input = input;
     }
 
     /**
@@ -262,7 +262,7 @@ public class CausalityPreserve {
             EntityNode target = cur.getSink();
             Stack<EventEdge> stack = pairStacks.get(cur.getEvent()).get(source).get(target);
             if (stack.isEmpty()) {
-                stack.push(cur);
+                stack.push(cloneEdge(cur));
             } else {
                 EventEdge edgePrevious = stack.pop();
                 if (backwardCheck(edgePrevious, cur, source)
@@ -271,7 +271,7 @@ public class CausalityPreserve {
                     stack.push(edgePrevious);
                 } else {
                     stack.push(edgePrevious);
-                    stack.push(cur);
+                    stack.push(cloneEdge(cur));
                 }
             }
         }
@@ -339,7 +339,7 @@ public class CausalityPreserve {
             EntityNode target = cur.getSink();
             Stack<EventEdge> stack = pairStacks.get(cur.getEvent()).get(source).get(target);
             if (stack.isEmpty()) {
-                stack.push(cur);
+                stack.push(cloneEdge(cur));
             } else {
                 EventEdge edgePrevious = stack.pop();
                 BigDecimal diff = cur.getStartTime().subtract(edgePrevious.endTime);
@@ -348,7 +348,7 @@ public class CausalityPreserve {
                     stack.push(edgePrevious);
                 } else {
                     stack.push(edgePrevious);
-                    stack.push(cur);
+                    stack.push(cloneEdge(cur));
                 }
             }
         }
@@ -379,6 +379,11 @@ public class CausalityPreserve {
      */
     // Merge all edges without considering the time window or event type.
     private DirectedPseudograph<EntityNode, EventEdge> applyEndpointAggregationMode() {
+        DirectedPseudograph<EntityNode, EventEdge> merged = new DirectedPseudograph<>(EventEdge.class);
+        for (EntityNode n : input.vertexSet()) {
+            merged.addVertex(n);
+        }
+
         Map<EntityNode, Map<EntityNode, EventEdge>> map = new HashMap<>();
         Set<EventEdge> edgeSet = input.edgeSet();
         List<EventEdge> edgeList = new ArrayList<>(edgeSet);
@@ -387,27 +392,33 @@ public class CausalityPreserve {
         for (EventEdge e : edgeList) {
             EntityNode source = e.getSource();
             EntityNode target = e.getSink();
-            e.setEdgeEvent("NullAfterMerge");
+            EventEdge edgeCopy = cloneEdge(e);
+            edgeCopy.setEdgeEvent("NullAfterMerge");
             if (!map.containsKey((source))) {
                 map.put(source, new HashMap<EntityNode, EventEdge>());
             }
             if (map.get(source).containsKey(target)) {
                 EventEdge previous = map.get(source).get(target);
-                previous = merge(previous, e);
+                previous = merge(previous, edgeCopy);
                 map.get(source).put(target, previous);
             } else {
-                map.get(source).put(target, e);
+                map.get(source).put(target, edgeCopy);
             }
         }
-        afterMerge = input;
+
+        for (Map<EntityNode, EventEdge> targets : map.values()) {
+            for (EventEdge edge : targets.values()) {
+                merged.addEdge(edge.getSource(), edge.getSink(), edge);
+            }
+        }
+
+        afterMerge = merged;
         return afterMerge;
 
     }
 
     private EventEdge merge(EventEdge previous, EventEdge cur) {
-        previous = previous.merge(cur);
-        input.removeEdge(cur);
-        return previous;
+        return previous.merge(cur);
     }
 
     private static final class RelationKey {
