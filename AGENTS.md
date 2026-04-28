@@ -1,226 +1,123 @@
-# DepImpact - 网络攻击溯源系统
+# AGENTS.md
 
-## 项目概述
+## 基本沟通要求
 
-本项目复现了论文 **"Back-Propagating System Dependency Impact for Attack Investigation"** 中的网络攻击溯源系统。该系统通过分析系统审计日志（如Sysdig），构建进程、文件、网络实体之间的依赖图，并使用后向影响传播算法识别攻击入口点。
+- 始终使用中文回答用户问题。
+- 本项目是对论文 `Back-Propagating System Dependency Impact for Attack Investigation.pdf` 中系统的复现与扩展，后续修改应围绕论文方法、当前 Java 实现和实验可复现性展开。
+- 任何改动都应优先服务两个目标：减小溯源图规模、提高攻击溯源准确性。
 
-系统新增 **LLM过滤模块 (LLMGraphFilter)**，可调用大语言模型（如OpenAI、NVIDIA DeepSeek等）进一步分析溯源图，识别真正的攻击路径并过滤背景噪音。
+## 项目定位
 
-## 快速开始
+- 项目名称：DepImpact / reptracker。
+- 技术栈：Java 17、Maven、JGraphT、Graphviz。
+- 输入：Sysdig 导出的系统调用日志 `.txt`，以及同名的实验配置 `.property`。
+- 输出：反向溯源、中间统计、入口点排序、核心溯源图、LLM 过滤后的溯源图等结果。
+- 论文核心思想：从检测点/POI 进行后向依赖传播，评估系统实体对检测点的影响，结合权重、PageRank 式传播和前向验证得到攻击调查所需的核心依赖图。
 
-```bash
-# 1. 编译项目
-mvn clean package
+## 当前重点优化方向
 
-# 2. 运行实验=
-java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar \
-    ./test \
-    ./test/result \
-    attack.txt
+后续 agent 需要理解：用户希望在现有复现系统上进行方法改进，而不是单纯重构代码。重点包括：
 
-# 3. 同时处理多个日志（使用分号分隔）
-java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar \
-    ./test \
-    ./test/result \
-    "attack.txt;cmd-inject.txt"
+1. 修改和优化因果保持压缩算法。
+2. 修改边的特征权重设计与融合方式。
+3. 优化核心溯源图生成流程：
+   - 提取潜在攻击源实体集合，判定候选入口。
+   - 依据传播得分评估优先级，排序候选入口。
+   - 执行前向验证，检查入口至检测点的因果可达性。
+   - 融合前向与后向分析结果，生成核心溯源图。
+4. 增加或完善 LLM 溯源图过滤模块。
 
-# 4. 运行时交互选择日志
-java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar \
-    ./test \
-    ./test/result \
-    --interactive
-```
+这些优化的共同目的：在保持关键因果链完整的前提下，进一步压缩溯源图规模，并提高入口点识别、路径保留和攻击解释的准确性。
 
-**命令行参数**：
-- `args[0]`: 日志文件所在目录路径
-- `args[1]`: 结果输出目录路径
-- `args[2]`: 日志文件名（多个用分号分隔，如"wget.txt;curl.txt"）
+## 关键文件与职责
 
-当 `args[2]` 传入多个日志文件名时，系统会按顺序逐个处理每个日志，并在结果目录下为每个日志分别生成对应的输出子目录。
+- `src/main/java/pagerank/main/ExperimentRunnerCmd.java`：命令行入口，读取全局配置和实验配置，批量运行日志案例。
+- `src/main/java/pagerank/main/ProcessOneLogCMD_19.java`：单个日志的核心处理流程，串联 BackTrack、CPR、权重计算、PageRank、入口点选择、前向验证、核心图生成和 LLM 过滤。
+- `src/main/java/pagerank/algorithm/BackTrack.java`：从 POI/检测点进行后向切片，得到可达检测点的依赖子图。
+- `src/main/java/pagerank/algorithm/CausalityPreserve.java`：因果保持压缩算法入口，当前支持 `windowed_sequence`、`standard_cpr`、`causal_strict`、`fd`、`sd`、`full_merge`、`endpoint_aggregation`、`no_merge` 等模式。
+- `src/main/java/pagerank/algorithm/IterateGraph.java`：图遍历、边权重计算、PageRank 式传播、候选入口提取和结果导出。
+- `src/main/java/pagerank/algorithm/BackwardPropagate_pf.java`：后向传播、候选入口排序、前向入口列表生成，以及前后向融合生成核心溯源图。
+- `src/main/java/pagerank/algorithm/ForwardAnalysis.java`：从候选入口进行前向验证，检查入口到 POI 的因果可达路径。
+- `src/main/java/pagerank/algorithm/LLMGraphFilter.java`：LLM 溯源图过滤模块，负责图序列化、提示词构造、模型调用、边/入口解析和连通性兜底。
+- `src/main/java/pagerank/main/LLMFilterSnapshotIO.java`：核心图快照读写，用于复用 LLM 过滤输入。
+- `src/main/java/pagerank/main/LLMFilterRunner.java`：独立运行 LLM 过滤快照的入口。
+- `src/main/java/pagerank/config/GlobalConfig.java`：读取 `depimpact.properties` 中的全局配置。
+- `src/main/java/pagerank/entity/EventEdge.java`：依赖边实体，包含时间、事件类型、数据量和权重字段，是边特征改造的基础类。
+- `depimpact.properties`：全局运行配置，包括 `weight_mode`、`cpr_mode`、`cpr_time_window`、`fd_window_size`、`sd_source_set_limit`、LLM 配置、系统调用白名单和默认背景实体。
 
-当 `args[2]` 传入 `--interactive`（或 `-i`）时，系统会在启动后列出当前日志目录下可选的日志文件，用户可在运行时输入编号或文件名进行选择。
+## 核心处理流程
 
-如果使用 VS Code，可直接使用 `.vscode/launch.json` 中的 `Run ExperimentRunnerCmd Interactive` 启动配置，其参数等价于：
+修改核心逻辑前，优先沿以下调用链理解系统：
 
-```json
-{
-  "type": "java",
-  "name": "Run ExperimentRunnerCmd Interactive",
-  "request": "launch",
-  "mainClass": "pagerank.main.ExperimentRunnerCmd",
-  "args": "./test ./test/result --interactive",
-  "projectName": "reptracker"
-}
-```
+1. `ExperimentRunnerCmd.main` 解析运行参数。
+2. `ExperimentRunnerCmd.runExperiment` 调用 `ProcessOneLogCMD_19.run_exp_backward`。
+3. `BackTrack.backTrackPOIEvent` 从 POI 生成后向切片。
+4. `CausalityPreserve.applyMode` 对后向切片做因果保持压缩。
+5. `IterateGraph` 根据 `weight_mode` 计算边权重并执行传播。
+6. `BackwardPropagate_pf.getForwardStarts` 提取和排序候选入口。
+7. `ForwardAnalysis` 对候选入口执行前向可达性验证。
+8. `BackwardPropagate_pf.combineBackwardAndForwardForMultipleStarts` 融合前后向结果，生成核心溯源图。
+9. `LLMGraphFilter.filterGraph` 可选地进一步过滤核心溯源图。
 
-## 核心概念
+## 因果保持压缩改造原则
 
-### 1. 实体类型 (Entity Types)
-- **Process (进程)**: `Process.java`，标识系统进程
-- **File (文件)**: `FileEntity.java`，标识文件路径
-- **Network (网络)**: `NetworkEntity.java`，标识网络连接 (IP:Port -> IP:Port)
+- 不要只追求边数减少；压缩后必须尽量保留从候选攻击源到 POI 的关键因果可达性。
+- 新增 CPR 模式时，优先在 `CausalityPreserve.applyMode` 中添加模式常量和分支，并同步更新 `depimpact.properties` 注释、README 或相关说明。
+- 避免在压缩中合并语义不同但时间接近的边，尤其要谨慎处理进程执行、网络收发、文件读写之间的方向和依赖语义。
+- 如果引入更激进的合并策略，应保留可对照的 baseline，例如 `no_merge`、`windowed_sequence`、`fd` 或 `sd`。
+- 压缩算法应记录压缩前后顶点数、边数、耗时和压缩率，便于和论文方法及旧实现比较。
 
-### 2. 事件类型 (Event Types)
-系统依赖图中的边（事件）分为五种：
-- **PtoP (Process to Process)**: 进程间通信 (execve系统调用)
-- **PtoF (Process to File)**: 进程写文件 (write/writev系统调用)
-- **FtoP (File to Process)**: 文件被进程读取 (read/readv系统调用)
-- **PtoN (Process to Network)**: 进程发起网络连接 (sendto/write/sendmsg系统调用)
-- **NtoP (Network to Process)**: 网络连接被接收 (read/recvmsg/recvfrom系统调用)
+## 边权重改造原则
 
-## 核心算法流程
+- 边权重相关逻辑主要在 `IterateGraph.java`，边字段在 `EventEdge.java`。
+- 修改权重时要区分时间权重、数据量权重、结构/扇出权重、系统调用语义权重、实体类型权重等特征。
+- 新权重模式应通过 `weight_mode` 显式选择，避免直接覆盖现有模式导致实验不可复现。
+- 对涉及归一化、标准化、异常值处理和出边归一的逻辑，必须检查是否会改变 PageRank 传播方向或放大背景噪声实体。
+- 权重设计应优先提升攻击入口、异常网络连接、可疑进程执行和关键文件修改的排序质量，同时抑制库文件、系统配置、只读文件等背景实体。
 
-```
-日志文件 → 解析事件 → 构建依赖图 → BackTrack后向切片 → CPR因果压缩 → 权重计算 → PageRank传播 → 识别入口点
-```
+## 候选入口与核心图生成优化原则
 
-| 步骤 | 文件 | 功能 |
-|------|------|------|
-| Step 1 | `GetGraph.java` | 从Sysdig日志解析事件，构建有向伪图 |
-| Step 2 | `BackTrack.java` | 后向切片，从POI反向遍历保留因果子图 |
-| Step 3 | `CausalityPreserve.java` | 因果保持压缩，合并时间窗口内连续操作 |
-| Step 4 | `BackwardPropagate_pf.java` | 特征权重计算 + PageRank传播 |
-| Step 5 | `ForwardAnalysis.java` | 前向分析，验证因果路径 |
-| Step 6 | `LLMGraphFilter.java` | LLM图过滤，识别真正攻击路径 |
+- 候选入口提取应结合传播得分、实体类型、边类型、时间位置、与 POI 的可达路径和是否属于背景实体。
+- 排序时不要只看单一 reputation/传播分数；可以考虑路径长度、路径证据强度、跨实体类型转换、网络入口特征、进程祖先链等因素。
+- 前向验证必须确认候选入口到检测点存在因果路径；如果为了连通性补边，应明确标记或记录补边来源。
+- 核心图生成应尽量保留能够解释攻击链的最小必要路径，而不是简单导出完整后向切片。
+- 任何过滤策略都应避免删除 POI、已选入口、关键桥接边和连接入口到 POI 的唯一因果路径。
 
-### 权重计算模式 (mode参数)
+## LLM 溯源图过滤模块原则
 
-通过根目录的 `depimpact.properties` 中的 `weight_mode` 设置，默认 `clusterall`：
+- LLM 过滤是后处理模块，不应替代确定性的因果可达性检查。
+- 调用 LLM 前应尽量输入已经压缩和排序后的核心图，而不是完整原始图。
+- Prompt 应要求模型输出结构化结果，例如保留边 ID、保留入口、删除理由和攻击链摘要。
+- LLM 输出必须经过程序校验：边 ID 是否存在、入口是否存在、过滤后是否仍包含 POI、入口到 POI 是否连通。
+- LLM 过滤失败时，系统应回退到未经过 LLM 过滤的核心溯源图，不能中断主实验。
+- 不要把真实 API Key 写入代码或提交到仓库；优先通过配置文件占位符、环境变量或本地私有配置传入。
 
-| 模式 | 说明 |
-|------|------|
-| `nonml` | 手动权重分配 |
-| `clusterall` | 全局聚类 + FDA降维 |
-| `clusterlocal` | 局部聚类 + FDA降维（论文核心） |
-| `localtime` | 仅时间权重 |
-| `localamount` | 仅数据量权重 |
-| `localstruct` | 仅结构权重(扇出) |
-| `fanout` | 扇出权重 |
+## 配置与运行
 
-## 输入格式
+- Maven 构建：`mvn package`。
+- 运行示例：`java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar ./test ./test/result attack.txt`。
+- 多日志运行：第三个参数使用分号分隔，例如 `"attack.txt;cmd-inject.txt"`。
+- 交互选择日志：`java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar ./test ./test/result --interactive`。
+- 修改 `weight_mode`、`cpr_mode`、`cpr_time_window`、`fd_window_size`、`sd_source_set_limit` 后，应记录配置组合和结果指标。
 
-### 1. 日志文件 (.txt)
-Sysdig格式的系统审计日志，包含系统调用事件。示例目录：`data/attack_log/`
+## 实验与评估建议
 
-### 2. 配置文件 (.property)
-与日志同名的配置文件，以 `.backward` 结尾表示反向溯源分析。示例目录：`data/attack_properties/`
+- 优先保留并比较以下指标：后向切片规模、CPR 后规模、核心溯源图规模、LLM 过滤后规模、运行耗时、候选入口排名、关键路径是否保留。
+- 对每个优化策略至少与一个 baseline 比较，例如 `no_merge`、`windowed_sequence`、`fd`、`sd` 或原论文对应模式。
+- 如果新增指标，建议写入已有 JSON 输出结构，避免只打印到控制台。
+- 修改算法后，应使用同一日志和同一 `.property` 配置对比改动前后的输出图和统计结果。
 
-**配置项说明**：
-```properties
-POI = /tmp/malicious_file.txt          # 检测点(恶意文件/网络连接)
-highRP = 192.168.1.100:44444->...      # 高可疑实体(reputation=1.0)
-lowRP = 192.168.1.1:80->...,/bin/ls    # 低可疑实体(reputation=0.0)
-midRP = /lib64/libc.so.6,...            # 背景噪音实体(可选)
-detectionSize = 1024                    # 检测到的数据量
-criticalEdge = edge1;edge2              # 关键边(用于评估)
-```
+## 代码修改约束
 
-### 3. 全局配置文件 (depimpact.properties)
-系统级配置统一放在根目录的 `depimpact.properties` 中，包括 LLM 图过滤配置、Weight mode、本地 IP、默认 midRP 和 syscall 白名单等。
+- 保持现有包结构和命名风格，优先做小而集中的改动。
+- 不要无关重构日志解析、实体模型或输出格式，除非它们直接阻塞上述优化目标。
+- 修改公共流程时注意保持旧配置可运行，新增策略应默认关闭或通过配置显式启用。
+- 不要删除已有实验模式、已有 JSON 字段或已有图输出，除非用户明确要求。
+- 处理中文注释或 README 时注意文件编码，避免引入乱码。
 
-```properties
-weight_mode=clusterall
-llm_enabled=true                       # 是否启用LLM过滤
-base_url=https://integrate.api.nvidia.com/v1  # LLM API端点
-api_key = your-api-key                 # API密钥
-model = nvidia/llama-3.3-nemotron-super-49b-v1  # 模型名称
-temperature=0.1                        # 温度参数
-max_tokens=20480                       # 最大token数
-```
+## 安全与隐私
 
+- `depimpact.properties` 中可能包含本地或真实 LLM API Key。后续 agent 不应在回答、日志或提交说明中泄露密钥内容。
+- 若需要展示配置示例，使用 `your_api_key`、`${LLM_API_KEY}` 等占位符。
+- 不要把大型数据集、生成结果目录或敏感日志加入版本控制。
 
-## 项目结构
-
-```
-src/main/java/
-├── pagerank/
-│   ├── algorithm/                      # 核心算法实现
-│   │   ├── GetGraph.java              # 图构建入口
-│   │   ├── BackTrack.java             # 后向切片
-│   │   ├── CausalityPreserve.java     # 因果压缩
-│   │   ├── BackwardPropagate_pf.java  # 权重计算+PageRank
-│   │   ├── ForwardAnalysis.java       # 前向分析
-│   │   ├── IterateGraph.java          # 图导出
-│   │   └── LLMGraphFilter.java        # LLM过滤
-│   ├── entity/                        # 实体类
-│   │   ├── EntityNode.java            # 图节点
-│   │   ├── EventEdge.java             # 图边
-│   │   ├── Process.java               # 进程实体
-│   │   ├── FileEntity.java            # 文件实体
-│   │   ├── NetworkEntity.java         # 网络实体
-│   │   └── *Event.java                # 5种事件类型
-│   ├── provider/                      # 数据提供器
-│   ├── main/                          # 主入口
-│   │   ├── ExperimentRunnerCmd.java   # 命令行入口
-│   │   ├── Experiment.java            # 配置解析
-│   │   └── ProcessOneLogCMD_19.java   # 实验流程
-│   └── config/
-│       └── MetaConfig.java            # 系统配置
-└── logparsers/                        # 日志解析
-    ├── SysdigOutputParser.java        # Sysdig解析器
-    └── systemcalls/                   # 系统调用定义
-```
-
-## 关键类说明
-
-### 主入口类
-- **ExperimentRunnerCmd**: `src/main/java/pagerank/main/ExperimentRunnerCmd.java:41`
-  - main方法：程序入口，解析命令行参数
-  - run2方法：主实验执行流程
-
-### 核心算法类
-- **GetGraph**: `src/main/java/pagerank/algorithm/GetGraph.java`
-  - GenerateGraph(): 解析Sysdig日志，构建依赖图
-  - getJg(): 获取构建的图
-
-- **BackwardPropagate_pf**: `src/main/java/pagerank/algorithm/BackwardPropagate_pf.java`
-  - calculateWeights_*(): 权重计算方法
-  - PageRankIterationBackward(): PageRank传播迭代
-
-- **LLMGraphFilter**: `src/main/java/pagerank/algorithm/LLMGraphFilter.java`
-  - buildPrompt(): 构建LLM提示词
-  - extractEdgeIdsFromResponse(): 从LLM响应提取边ID
-  - filterGraph(): 执行图过滤
-
-### 实体类
-- **EntityNode**: `src/main/java/pagerank/entity/EntityNode.java` - 图节点封装
-- **EventEdge**: `src/main/java/pagerank/entity/EventEdge.java` - 图边/事件
-- **Process/FileEntity/NetworkEntity**: 进程/文件/网络实体
-
-### 配置类
-- **MetaConfig**: `src/main/java/pagerank/config/MetaConfig.java` - 系统配置
-  - localIP: 本地IP地址列表
-  - ptopSystemCall/ptofSystemCall/ftopSystemCall/ptonSystemCall/ntopSystemCall: 系统调用白名单
-
-## 输出结果
-
-运行后在结果目录生成：
-- `*_stats`: 各阶段节点/边数量、时间消耗统计
-- `BackTrack_*.dot`: 后向切片子图
-- `AfterCPR_*.dot`: CPR压缩后的图
-- `Weight_*.dot`: 带权重的最终图
-- `*_entry_points.json`: 识别出的入口点列表
-- `results/`: 完整溯源图(.dot + .svg)
-- `llm_interaction_*.log`: LLM API调用日志
-- `llm_filtered_graph_*.svg`: LLM过滤后的精简溯源图
-
-## 依赖库
-
-- **JGraphT**: 图数据结构
-- **Apache Commons Math3**: 聚类、降维(FDA)
-- **Graphviz-Java**: 图可视化
-- **JSON-Simple**: JSON处理
-- **Spring Boot**: 项目框架
-
-## 扩展开发指南
-
-1. **权重计算**: 修改 `BackwardPropagate_pf.java` 中的 `calculateWeights_*` 方法
-2. **传播算法**: 修改 `PageRankIterationBackward` 方法
-3. **入口点识别**: 修改 `getForwardStarts` 和 `getCandidateEntryPoint` 方法
-4. **添加新事件类型**: 在 `EventEdge.java` 添加构造函数，在 `GetGraph.java` 添加处理逻辑
-5. **LLM过滤**: 修改 `LLMGraphFilter.java` 中的 `buildPrompt` 方法调整Prompt策略
-
-## 样例数据
-
-- 日志文件: `data/attack_log/complex_one_longer.txt`
-- 配置文件: `data/attack_properties/complex_one_longer-backward.property`
