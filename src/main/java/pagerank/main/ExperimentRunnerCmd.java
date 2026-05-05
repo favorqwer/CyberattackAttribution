@@ -2,6 +2,7 @@ package pagerank.main;
 
 import guru.nidi.graphviz.engine.Graphviz;
 import guru.nidi.graphviz.engine.GraphvizV8Engine;
+import logparsers.cdm.CdmGraphBuilder;
 import org.jgrapht.graph.DirectedPseudograph;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
@@ -215,6 +216,7 @@ public class ExperimentRunnerCmd {
     private static void printUsage() {
         System.err.println("Usage:");
         System.err.println("  ExperimentRunnerCmd <log path> <result path> <log names,...>");
+        System.err.println("    log names may be Sysdig .txt files or CDM/Theia .cdm manifests");
         System.err.println("  ExperimentRunnerCmd <log path> <result path> " + INTERACTIVE_FLAG);
     }
 
@@ -260,6 +262,10 @@ public class ExperimentRunnerCmd {
 
     private DirectedPseudograph<EntityNode, EventEdge> loadGraph(File log, String[] localIP) throws IOException {
         try {
+            if (isCdmManifest(log)) {
+                System.out.println("Detected CDM manifest, building graph from Theia/CDM Avro: " + log.getAbsolutePath());
+                return CdmGraphBuilder.build(log.toPath());
+            }
             GetGraph generator = new GetGraph(log.getPath(), localIP);
             generator.GenerateGraph();
             return generator.getJg();
@@ -387,7 +393,10 @@ public class ExperimentRunnerCmd {
             throw new FileNotFoundException("Invalid directory: " + logDir);
         }
 
-        File[] logFiles = logDir.listFiles((dir, name) -> name.toLowerCase(Locale.ROOT).endsWith(".txt"));
+        File[] logFiles = logDir.listFiles((dir, name) -> {
+            String lowerName = name.toLowerCase(Locale.ROOT);
+            return lowerName.endsWith(".txt") || lowerName.endsWith(".cdm");
+        });
         if (logFiles == null) {
             return new File[0];
         }
@@ -430,6 +439,10 @@ public class ExperimentRunnerCmd {
         return propertyFileName.endsWith(".property")
                 && (propertyFileName.equals(logBaseName + ".property")
                 || propertyFileName.startsWith(logBaseName + ":"));
+    }
+
+    private static boolean isCdmManifest(File log) {
+        return log.getName().toLowerCase(Locale.ROOT).endsWith(".cdm");
     }
 
     @FunctionalInterface

@@ -18,7 +18,7 @@ import java.util.zip.GZIPInputStream;
 public final class CdmAvroGzipReader implements AutoCloseable, Iterable<GenericRecord> {
     public static final String EXPECTED_SCHEMA_FULL_NAME = "com.bbn.tc.schema.avro.cdm20.TCCDMDatum";
 
-    private static final int STREAM_BUFFER_BYTES = 1024 * 1024;
+    private static final int STREAM_BUFFER_BYTES = 8 * 1024 * 1024;
 
     private final Path path;
     private final InputStream rawInput;

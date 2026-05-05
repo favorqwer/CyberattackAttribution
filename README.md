@@ -60,6 +60,26 @@ attack.backward.property
 java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar ./test ./test/result attack.txt
 ```
 
+### Theia/CDM Avro 构图
+
+Theia 数据集可以通过 `.cdm` manifest 作为第三个参数输入。`.cdm` 文件与同名 `.property` 放在同一案例目录下，`.property` 中的 `POI`、`highRP`、`lowRP`、`entry` 继续填写构图后的节点签名，例如文件路径 `/home/admin/.vnc/ta1-theia-target-1:1.log`、网络连接 `local:port->remote:port`，或进程签名 `cid@uuid8name`。
+
+`theia-e5.cdm` 示例：
+
+```properties
+cdm.input_dir=Transparent_Computing_Engagement_5_Dataset/Data/theia
+cdm.file_glob=ta1-theia-1-e5-official-2.bin*.gz
+cdm.start_nanos=1557241091148522395
+cdm.end_nanos=1557244691148522395
+cdm.max_events=0
+```
+
+运行方式仍保持三参数风格：
+
+```powershell
+java -jar target/reptracker-1.0-SNAPSHOT-jar-with-dependencies.jar ./test ./test/result theia-e5.cdm
+```
+
 同时处理多个日志时，可在第三个参数中使用分号分隔多个日志文件名：
 
 ```bash
