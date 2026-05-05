@@ -45,45 +45,11 @@ public final class CdmGraphBuilder {
         return new CdmGraphBuilder(CdmGraphManifest.load(manifestPath)).build();
     }
 
-    public static DirectedPseudograph<EntityNode, EventEdge> buildSinglePass(Path manifestPath) throws IOException {
-        return new CdmGraphBuilder(CdmGraphManifest.load(manifestPath)).buildSinglePass();
-    }
-
     public DirectedPseudograph<EntityNode, EventEdge> build() throws IOException {
         List<Path> files = manifest.resolveInputFiles();
         firstPass(files);
         secondPass(files);
         printBuildSummary("two-pass");
-        return graph;
-    }
-
-    public DirectedPseudograph<EntityNode, EventEdge> buildSinglePass() throws IOException {
-        List<Path> files = manifest.resolveInputFiles();
-        for (Path file : files) {
-            try (CdmAvroGzipReader reader = CdmAvroGzipReader.open(file)) {
-                for (GenericRecord topLevel : reader) {
-                    String recordType = CdmRecordAccess.recordType(topLevel);
-                    GenericRecord datum = CdmRecordAccess.datum(topLevel);
-                    if (!"RECORD_EVENT".equals(recordType)) {
-                        cacheEntity(recordType, datum);
-                        continue;
-                    }
-
-                    long timestampNanos = CdmRecordAccess.longValue(datum, "timestampNanos", Long.MIN_VALUE);
-                    if (timestampNanos < manifest.getStartNanos() || timestampNanos > manifest.getEndNanos()) {
-                        continue;
-                    }
-                    if (manifest.getMaxEvents() > 0 && eventsInWindow >= manifest.getMaxEvents()) {
-                        printBuildSummary("single-pass");
-                        return graph;
-                    }
-
-                    eventsInWindow++;
-                    mapEvent(datum, timestampNanos);
-                }
-            }
-        }
-        printBuildSummary("single-pass");
         return graph;
     }
 

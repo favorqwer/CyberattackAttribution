@@ -17,17 +17,11 @@ public final class CdmBacktrackStatsRunner {
 
     public static void main(String[] args) throws Exception {
         List<String> positional = new ArrayList<>();
-        boolean twoPass = false;
         for (String arg : args) {
-            if ("--two-pass".equals(arg)) {
-                twoPass = true;
-            } else {
-                positional.add(arg);
-            }
+            positional.add(arg);
         }
-
         if (positional.size() < 2 || positional.size() > 3) {
-            System.err.println("Usage: CdmBacktrackStatsRunner <manifest.cdm> <poi-signature> [output-prefix] [--two-pass]");
+            System.err.println("Usage: CdmBacktrackStatsRunner <manifest.cdm> <poi-signature> [output-prefix]");
             System.exit(1);
         }
 
@@ -36,9 +30,7 @@ public final class CdmBacktrackStatsRunner {
         Path outputPrefix = positional.size() == 3 ? Path.of(positional.get(2)) : null;
 
         long started = System.currentTimeMillis();
-        DirectedPseudograph<EntityNode, EventEdge> original = twoPass
-                ? CdmGraphBuilder.build(manifest)
-                : CdmGraphBuilder.buildSinglePass(manifest);
+        DirectedPseudograph<EntityNode, EventEdge> original = CdmGraphBuilder.build(manifest);
         long buildElapsedMs = System.currentTimeMillis() - started;
 
         BackTrack backTrack = new BackTrack(original);
@@ -62,7 +54,6 @@ public final class CdmBacktrackStatsRunner {
         System.out.println("Original edges: " + original.edgeSet().size());
         System.out.println("BackTrack vertices: " + sliced.vertexSet().size());
         System.out.println("BackTrack edges: " + sliced.edgeSet().size());
-        System.out.println("Build mode: " + (twoPass ? "two-pass" : "single-pass"));
         System.out.println("Build seconds: " + buildElapsedMs / 1000.0);
         System.out.println("BackTrack seconds: " + sliceElapsedMs / 1000.0);
         System.out.println("Elapsed seconds: " + totalElapsedMs / 1000.0);
