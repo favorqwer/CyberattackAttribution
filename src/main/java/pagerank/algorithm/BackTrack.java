@@ -85,6 +85,9 @@ public class BackTrack {
         
         // 获取POI节点
         EntityNode start = iterateGraph.getGraphVertex(str);
+        if (start == null) {
+            throw new IllegalArgumentException("POI signature not found in graph: " + str);
+        }
         // 获取该节点的最后操作时间（作为时间阈值上限）
         BigDecimal latestOPTime = iterateGraph.getLatestOperationTime(start);
         
@@ -150,6 +153,9 @@ public class BackTrack {
         System.out.println("backTrackPOIEvent invoked: "+str);
         DirectedPseudograph<EntityNode, EventEdge> backTrack = new DirectedPseudograph<EntityNode, EventEdge>(EventEdge.class);
         EntityNode start = iterateGraph.getGraphVertex(str);
+        if (start == null) {
+            throw new IllegalArgumentException("POI signature not found in graph: " + str);
+        }
         BigDecimal latestOPTime = iterateGraph.getLatestOperationTime(start);
         Map<EntityNode,BigDecimal> timeThresolds = new HashMap<>();
         timeThresolds.put(start, latestOPTime);
@@ -199,6 +205,9 @@ public class BackTrack {
 
         DirectedPseudograph<EntityNode, EventEdge> backTrack = new DirectedPseudograph<EntityNode, EventEdge>(EventEdge.class);
         EntityNode start = iterateGraph.getGraphVertex(str);
+        if (start == null) {
+            throw new IllegalArgumentException("POI signature not found in graph: " + str);
+        }
         BigDecimal latestOPTime = iterateGraph.getLatestOperationTime(start);
         Map<EntityNode, BigDecimal> timeThresold = new HashMap<>();
         timeThresold.put(start, latestOPTime);

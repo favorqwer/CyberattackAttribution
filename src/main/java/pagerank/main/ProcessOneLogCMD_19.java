@@ -62,8 +62,6 @@ public class ProcessOneLogCMD_19 {
      * @param orignal 完整的依赖图
      * @param resultDir 结果输出目录
      * @param suffix 文件名后缀
-     * @param threshold 阈值
-     * @param trackOrigin 是否追踪源头
      * @param logfile 日志文件路径
      * @param IP 本地IP地址
      * @param detection POI检测点
@@ -73,16 +71,15 @@ public class ProcessOneLogCMD_19 {
      * @param filename 文件名
      * @param detectionSize 检测数据量
      * @param seedSources 种子源
-     * @param criticalEdges 关键边
      * @param mode 权重模式
      * @param jsonlog JSON日志
      * @param importantEntries 重要入口点
      */
     // backtrack + backward propagate
     public static void run_exp_backward(DirectedPseudograph<EntityNode, EventEdge> orignal, String resultDir,
-            String suffix, double threshold, boolean trackOrigin, String logfile, String[] IP, String detection,
+            String suffix, String logfile, String[] IP, String detection,
             String[] highRP, String[] midRP, String[] lowRP, String filename, double detectionSize,
-            Set<String> seedSources, String[] criticalEdges, String mode, String cprMode, double cprTimeWindow, JSONObject jsonlog,
+            Set<String> seedSources, String mode, String cprMode, double cprTimeWindow, JSONObject jsonlog,
             JSONObject entryPointsLog, String[] importantEntries) {
         try {
             // 1. 打开统计文件（用于记录每一步的节点/边数量、耗时等）
