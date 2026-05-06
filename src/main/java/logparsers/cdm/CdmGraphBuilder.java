@@ -18,13 +18,14 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
-import java.util.LinkedList;
 import java.util.Set;
 
 public final class CdmGraphBuilder {
@@ -40,6 +41,8 @@ public final class CdmGraphBuilder {
     private final Map<String, SubjectInfo> subjects;
     private final Map<String, Set<Ref>> signatureToRefs;
     private final Map<String, String> uuidToFallbackSignature;
+    private final Set<String> referencedUuids;
+    private final Set<String> executeChildSubjectUuids;
     private final List<CompactEvent> compactEvents;
     private final Map<Ref, List<CompactEvent>> incomingIndex;
     private final Map<Ref, NodeRef> materializedRefs;
@@ -64,6 +67,8 @@ public final class CdmGraphBuilder {
         this.subjects = new HashMap<>();
         this.signatureToRefs = new HashMap<>();
         this.uuidToFallbackSignature = new HashMap<>();
+        this.referencedUuids = new LinkedHashSet<>();
+        this.executeChildSubjectUuids = new LinkedHashSet<>();
         this.compactEvents = new ArrayList<>();
         this.incomingIndex = new HashMap<>();
         this.materializedRefs = new HashMap<>();
@@ -90,7 +95,8 @@ public final class CdmGraphBuilder {
         List<Path> files = manifest.resolveInputFiles();
         ScanProgress progress = new ScanProgress(files);
         progress.logScanStart();
-        scan(files, progress);
+        scanEvents(files, progress);
+        resolveReferencedEntities(files);
         addExecuteParentEvents();
         indexCompactEvents();
         compactEventCount = compactEvents.size();
@@ -121,23 +127,23 @@ public final class CdmGraphBuilder {
         return graph;
     }
 
-    private void scan(List<Path> files, ScanProgress progress) throws IOException {
+    private void scanEvents(List<Path> files, ScanProgress progress) throws IOException {
         for (int fileIndex = 0; fileIndex < files.size(); fileIndex++) {
             Path file = files.get(fileIndex);
             progress.onFileStart(fileIndex, file);
             try (CdmAvroGzipReader reader = CdmAvroGzipReader.open(file)) {
                 for (GenericRecord topLevel : reader) {
                     progress.onRecordProcessed();
+                    if (!"RECORD_EVENT".equals(CdmRecordAccess.recordType(topLevel))) {
+                        progress.maybeLog();
+                        continue;
+                    }
+
                     GenericRecord datum = CdmRecordAccess.datum(topLevel);
-                    String recordType = CdmRecordAccess.recordType(topLevel);
-                    if ("RECORD_EVENT".equals(recordType)) {
-                        if (!collectEvent(datum)) {
-                            progress.onFileEnd();
-                            progress.logEarlyStop("Reached cdm.max_events limit");
-                            return;
-                        }
-                    } else {
-                        cacheEntity(recordType, datum);
+                    if (!collectEvent(datum)) {
+                        progress.onFileEnd();
+                        progress.logEarlyStop("Reached cdm.max_events limit");
+                        return;
                     }
                     progress.maybeLog();
                 }
@@ -166,13 +172,17 @@ public final class CdmGraphBuilder {
             return true;
         }
 
-        Ref subject = resolveSubjectRef(CdmRecordAccess.nullableUuid(event, "subject"));
-        Ref predicate = resolveObjectRef(CdmRecordAccess.nullableUuid(event, "predicateObject"),
+        Ref subject = resolveEventSubjectRef(CdmRecordAccess.nullableUuid(event, "subject"));
+        Ref predicate = resolveEventObjectRef(CdmRecordAccess.nullableUuid(event, "predicateObject"),
                 CdmRecordAccess.nullableString(event, "predicateObjectPath"));
-        Ref predicate2 = resolveObjectRef(CdmRecordAccess.nullableUuid(event, "predicateObject2"),
+        Ref predicate2 = resolveEventObjectRef(CdmRecordAccess.nullableUuid(event, "predicateObject2"),
                 CdmRecordAccess.nullableString(event, "predicateObject2Path"));
         long size = CdmRecordAccess.longValue(event, "size", 0L);
         String normalizedEventType = CdmEventMapper.normalizeEvent(eventType);
+
+        if ("EXECUTE".equals(normalizedEventType) && subject != null && subject.kind == RefKind.UUID) {
+            executeChildSubjectUuids.add(subject.value);
+        }
 
         switch (flowKind) {
             case OBJECT_TO_PROCESS:
@@ -194,8 +204,103 @@ public final class CdmGraphBuilder {
         return true;
     }
 
-    private void cacheEntity(String recordType, GenericRecord datum) {
+    private Ref resolveEventSubjectRef(String uuid) {
+        if (uuid == null) {
+            return null;
+        }
+        referencedUuids.add(uuid);
+        return Ref.uuid(uuid);
+    }
+
+    private Ref resolveEventObjectRef(String uuid, String eventPathFallback) {
+        String normalizedFallback = normalizeSignature(eventPathFallback);
+        if (uuid == null) {
+            if (normalizedFallback == null) {
+                return null;
+            }
+            Ref ref = Ref.fallbackSignature(normalizedFallback);
+            registerSignatureRef(normalizedFallback, ref);
+            return ref;
+        }
+
+        referencedUuids.add(uuid);
+        Ref ref = Ref.uuid(uuid);
+        if (normalizedFallback != null) {
+            uuidToFallbackSignature.putIfAbsent(uuid, normalizedFallback);
+            registerSignatureRef(normalizedFallback, ref);
+        }
+        return ref;
+    }
+
+    private void resolveReferencedEntities(List<Path> files) throws IOException {
+        if (referencedUuids.isEmpty() && executeChildSubjectUuids.isEmpty()) {
+            System.out.println("CDM entity resolution skipped: no referenced UUIDs collected from time-window events.");
+            return;
+        }
+
+        referencedUuids.addAll(executeChildSubjectUuids);
+
+        int pass = 1;
+        while (true) {
+            int unresolvedBefore = countUnresolvedReferencedUuids();
+            if (unresolvedBefore == 0) {
+                break;
+            }
+
+            int resolvedNodesBefore = rawNodesByUuid.size();
+            int referencedBefore = referencedUuids.size();
+            System.out.println("CDM entity resolution pass " + pass + " started: referencedUuids="
+                    + referencedUuids.size() + ", unresolved=" + unresolvedBefore);
+
+            for (Path file : files) {
+                try (CdmAvroGzipReader reader = CdmAvroGzipReader.open(file)) {
+                    for (GenericRecord topLevel : reader) {
+                        String recordType = CdmRecordAccess.recordType(topLevel);
+                        if ("RECORD_EVENT".equals(recordType)) {
+                            continue;
+                        }
+                        GenericRecord datum = CdmRecordAccess.datum(topLevel);
+                        resolveEntityIfReferenced(recordType, datum);
+                    }
+                }
+            }
+
+            int unresolvedAfter = countUnresolvedReferencedUuids();
+            System.out.println("CDM entity resolution pass " + pass + " completed: resolvedNodes="
+                    + rawNodesByUuid.size() + ", unresolved=" + unresolvedAfter);
+
+            boolean madeProgress = rawNodesByUuid.size() > resolvedNodesBefore
+                    || referencedUuids.size() > referencedBefore;
+            if (!madeProgress) {
+                break;
+            }
+            pass++;
+        }
+
+        int unresolved = countUnresolvedReferencedUuids();
+        if (unresolved > 0) {
+            System.out.println("WARNING: CDM entity resolution ended with " + unresolved
+                    + " unresolved referenced UUID(s); path fallbacks will be used when available.");
+        }
+    }
+
+    private int countUnresolvedReferencedUuids() {
+        int count = 0;
+        for (String uuid : referencedUuids) {
+            if (!rawNodesByUuid.containsKey(uuid) && !uuidToFallbackSignature.containsKey(uuid)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void resolveEntityIfReferenced(String recordType, GenericRecord datum) {
         if (datum == null || recordType == null) {
+            return;
+        }
+
+        String uuid = CdmRecordAccess.uuid(datum, "uuid");
+        if (uuid == null || !referencedUuids.contains(uuid) || rawNodesByUuid.containsKey(uuid)) {
             return;
         }
 
@@ -247,6 +352,10 @@ public final class CdmGraphBuilder {
         rawNodesByUuid.put(uuid, rawNodeInfo);
         subjects.put(uuid, new SubjectInfo(parentUuid));
         registerSignatureRef(rawNodeInfo.signature, Ref.uuid(uuid));
+
+        if (parentUuid != null && !parentUuid.trim().isEmpty()) {
+            referencedUuids.add(parentUuid);
+        }
     }
 
     private void cacheFileObject(GenericRecord fileObject, String eventPathFallback) {
@@ -331,32 +440,6 @@ public final class CdmGraphBuilder {
         return objectType.toUpperCase(Locale.ROOT).contains("SOCKET");
     }
 
-    private Ref resolveSubjectRef(String uuid) {
-        if (uuid == null) {
-            return null;
-        }
-        return Ref.uuid(uuid);
-    }
-
-    private Ref resolveObjectRef(String uuid, String eventPathFallback) {
-        String normalizedFallback = normalizeSignature(eventPathFallback);
-        if (uuid == null) {
-            if (normalizedFallback == null) {
-                return null;
-            }
-            Ref ref = Ref.fallbackSignature(normalizedFallback);
-            registerSignatureRef(normalizedFallback, ref);
-            return ref;
-        }
-
-        Ref ref = Ref.uuid(uuid);
-        if (normalizedFallback != null) {
-            uuidToFallbackSignature.putIfAbsent(uuid, normalizedFallback);
-            registerSignatureRef(normalizedFallback, ref);
-        }
-        return ref;
-    }
-
     private void addCompactEvent(Ref sourceRef, Ref targetRef, String eventType, long timestampNanos, long size) {
         if (sourceRef == null || targetRef == null) {
             return;
@@ -375,7 +458,7 @@ public final class CdmGraphBuilder {
             if (childInfo == null || childInfo.parentUuid == null) {
                 continue;
             }
-            if (!subjects.containsKey(childInfo.parentUuid)) {
+            if (!rawNodesByUuid.containsKey(childInfo.parentUuid)) {
                 continue;
             }
 
@@ -596,6 +679,8 @@ public final class CdmGraphBuilder {
                 + ", compactEventCount=" + compactEventCount
                 + ", keptEventCount=" + keptEventCount
                 + ", keptRefCount=" + keptRefCount
+                + ", referencedUuids=" + referencedUuids.size()
+                + ", resolvedNodes=" + rawNodesByUuid.size()
                 + ", presliceTimeMs=" + presliceTimeMs
                 + ", materializeTimeMs=" + materializeTimeMs
                 + ", mappedEdges=" + mappedEdges);
