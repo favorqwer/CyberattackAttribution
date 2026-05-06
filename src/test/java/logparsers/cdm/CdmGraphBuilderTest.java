@@ -134,6 +134,75 @@ class CdmGraphBuilderTest {
         assertBackTrackMatches(fullGraph, preslicedGraph, poiPath, 2, 1);
     }
 
+    @Test
+    void createsPersistentTimeIndexForMultiFileManifest() throws IOException {
+        Path tempDir = Files.createTempDirectory(Path.of("target"), "cdm-graph-test-");
+        CdmTestRecords records = new CdmTestRecords();
+        String poiPath = "/tmp/target.log";
+        long earlyTimestamp = 1_557_241_091_148_522_395L;
+        long targetTimestamp = earlyTimestamp + 10L;
+
+        records.write(tempDir.resolve("case1.avro"), List.of(
+                records.top("RECORD_SUBJECT", records.subject(1, 111, "/usr/bin/echo",
+                        "/usr/bin/echo hello", null)),
+                records.top("RECORD_FILE_OBJECT", records.fileObject(2, null)),
+                records.top("RECORD_EVENT", records.event("EVENT_WRITE", 1, 2, "/tmp/early.log",
+                        earlyTimestamp, 8L))
+        ));
+
+        records.write(tempDir.resolve("case2.avro"), List.of(
+                records.top("RECORD_SUBJECT", records.subject(3, 222, "/usr/bin/python3",
+                        "/usr/bin/python3 target.py", null)),
+                records.top("RECORD_FILE_OBJECT", records.fileObject(4, null)),
+                records.top("RECORD_EVENT", records.event("EVENT_WRITE", 3, 4, poiPath,
+                        targetTimestamp, 16L))
+        ));
+
+        Path manifest = writeManifest(tempDir, "case*.avro", targetTimestamp, targetTimestamp);
+        DirectedPseudograph<EntityNode, EventEdge> fullGraph = CdmGraphBuilder.build(manifest);
+        DirectedPseudograph<EntityNode, EventEdge> preslicedGraph = CdmGraphBuilder.build(manifest, List.of(poiPath));
+
+        assertTrue(Files.exists(tempDir.resolve(".cdm-time-index.json")));
+        assertBackTrackMatches(fullGraph, preslicedGraph, poiPath, 2, 1);
+    }
+
+    @Test
+    void resolvesEntitiesAcrossTargetedFilesAndMultipleResolutionPasses() throws IOException {
+        Path tempDir = Files.createTempDirectory(Path.of("target"), "cdm-graph-test-");
+        CdmTestRecords records = new CdmTestRecords();
+        long timestamp = 1_557_241_091_148_522_395L;
+        String childProcessSignature = "200@00000002python3";
+
+        records.write(tempDir.resolve("case1.avro"), List.of(
+                records.top("RECORD_SUBJECT", records.subject(9, 900, "/usr/bin/true",
+                        "/usr/bin/true", null))
+        ));
+
+        records.write(tempDir.resolve("case2.avro"), List.of(
+                records.top("RECORD_SUBJECT", records.subject(1, 100, "/bin/bash",
+                        "/bin/bash", null)),
+                records.top("RECORD_SUBJECT", records.subject(2, 200, "/usr/bin/python3",
+                        "/usr/bin/python3 attack.py", records.uuid(1))),
+                records.top("RECORD_FILE_OBJECT", records.fileObject(3, "/tmp/payload.py"))
+        ));
+
+        records.write(tempDir.resolve("case3.avro"), List.of(
+                records.top("RECORD_EVENT", records.event("EVENT_EXECUTE", 2, 3, null, timestamp, 0L))
+        ));
+
+        Path manifest = writeManifest(tempDir, "case*.avro", timestamp, timestamp);
+        DirectedPseudograph<EntityNode, EventEdge> fullGraph = CdmGraphBuilder.build(manifest);
+        DirectedPseudograph<EntityNode, EventEdge> preslicedGraph =
+                CdmGraphBuilder.build(manifest, List.of(childProcessSignature));
+
+        assertTrue(Files.exists(tempDir.resolve(".cdm-time-index.json")));
+        assertEquals(3, preslicedGraph.vertexSet().size());
+        assertEquals(2, preslicedGraph.edgeSet().size());
+        assertTrue(preslicedGraph.vertexSet().stream()
+                .anyMatch(node -> "100@00000001bash".equals(node.getSignature())));
+        assertBackTrackMatches(fullGraph, preslicedGraph, childProcessSignature, 3, 2);
+    }
+
     private static void assertBackTrackMatches(DirectedPseudograph<EntityNode, EventEdge> fullGraph,
                                                DirectedPseudograph<EntityNode, EventEdge> preslicedGraph,
                                                String poiSignature,

@@ -93,10 +93,15 @@ public final class CdmGraphBuilder {
         }
 
         List<Path> files = manifest.resolveInputFiles();
-        ScanProgress progress = new ScanProgress(files);
+        CdmFileTimeIndex timeIndex = CdmFileTimeIndex.loadOrBuild(manifest.getInputDir(), files);
+        List<Path> eventFiles = timeIndex.selectFilesOverlappingWindow(files,
+                manifest.getStartNanos(), manifest.getEndNanos());
+        logTimeIndexSelection(timeIndex, files, eventFiles);
+
+        ScanProgress progress = new ScanProgress(eventFiles);
         progress.logScanStart();
-        scanEvents(files, progress);
-        resolveReferencedEntities(files);
+        scanEvents(eventFiles, progress);
+        resolveReferencedEntities(files, eventFiles);
         addExecuteParentEvents();
         indexCompactEvents();
         compactEventCount = compactEvents.size();
@@ -125,6 +130,20 @@ public final class CdmGraphBuilder {
         keptRefCount = selection.refs.size();
         printBuildSummary(mode);
         return graph;
+    }
+
+    private void logTimeIndexSelection(CdmFileTimeIndex timeIndex, List<Path> files, List<Path> eventFiles)
+            throws IOException {
+        long selectedBytes = 0L;
+        for (Path file : eventFiles) {
+            selectedBytes += Files.size(file);
+        }
+
+        long skippedFiles = files.size() - eventFiles.size();
+        System.out.println("CDM time index selected " + eventFiles.size() + "/" + files.size()
+                + " file(s) for event scan, skipped=" + skippedFiles
+                + ", selectedCompressed=" + formatBytes(selectedBytes)
+                + ", index=" + timeIndex.getIndexPath().toAbsolutePath());
     }
 
     private void scanEvents(List<Path> files, ScanProgress progress) throws IOException {
@@ -232,7 +251,7 @@ public final class CdmGraphBuilder {
         return ref;
     }
 
-    private void resolveReferencedEntities(List<Path> files) throws IOException {
+    private void resolveReferencedEntities(List<Path> files, List<Path> eventFiles) throws IOException {
         if (referencedUuids.isEmpty() && executeChildSubjectUuids.isEmpty()) {
             System.out.println("CDM entity resolution skipped: no referenced UUIDs collected from time-window events.");
             return;
@@ -240,70 +259,197 @@ public final class CdmGraphBuilder {
 
         referencedUuids.addAll(executeChildSubjectUuids);
 
-        int pass = 1;
-        while (true) {
-            int unresolvedBefore = countUnresolvedReferencedUuids();
-            if (unresolvedBefore == 0) {
-                break;
-            }
-
-            int resolvedNodesBefore = rawNodesByUuid.size();
-            int referencedBefore = referencedUuids.size();
-            System.out.println("CDM entity resolution pass " + pass + " started: referencedUuids="
-                    + referencedUuids.size() + ", unresolved=" + unresolvedBefore);
-
-            for (Path file : files) {
-                try (CdmAvroGzipReader reader = CdmAvroGzipReader.open(file)) {
-                    for (GenericRecord topLevel : reader) {
-                        String recordType = CdmRecordAccess.recordType(topLevel);
-                        if ("RECORD_EVENT".equals(recordType)) {
-                            continue;
-                        }
-                        GenericRecord datum = CdmRecordAccess.datum(topLevel);
-                        resolveEntityIfReferenced(recordType, datum);
-                    }
-                }
-            }
-
-            int unresolvedAfter = countUnresolvedReferencedUuids();
-            System.out.println("CDM entity resolution pass " + pass + " completed: resolvedNodes="
-                    + rawNodesByUuid.size() + ", unresolved=" + unresolvedAfter);
-
-            boolean madeProgress = rawNodesByUuid.size() > resolvedNodesBefore
-                    || referencedUuids.size() > referencedBefore;
-            if (!madeProgress) {
-                break;
-            }
-            pass++;
+        Set<String> unresolvedReferencedUuids = buildUnresolvedReferencedUuids();
+        if (unresolvedReferencedUuids.isEmpty()) {
+            System.out.println("CDM entity resolution skipped: all referenced UUIDs were already resolved by path fallbacks.");
+            return;
         }
 
-        int unresolved = countUnresolvedReferencedUuids();
-        if (unresolved > 0) {
-            System.out.println("WARNING: CDM entity resolution ended with " + unresolved
+        List<Path> primaryFiles = buildPrimaryEntityResolutionFiles(files, eventFiles);
+        List<Path> fallbackFiles = buildFallbackEntityResolutionFiles(files, eventFiles, primaryFiles);
+        System.out.println("CDM entity resolution started: referencedUuids=" + referencedUuids.size()
+                + ", unresolved=" + unresolvedReferencedUuids.size()
+                + ", primaryFiles=" + primaryFiles.size()
+                + ", fallbackFiles=" + fallbackFiles.size());
+
+        boolean madeProgress = false;
+        madeProgress |= scanEntityFilesWithLocalFixpoint(primaryFiles, unresolvedReferencedUuids, "primary");
+        if (!unresolvedReferencedUuids.isEmpty() && !fallbackFiles.isEmpty()) {
+            madeProgress |= scanEntityFilesWithLocalFixpoint(fallbackFiles, unresolvedReferencedUuids, "fallback");
+        }
+        if (!unresolvedReferencedUuids.isEmpty()) {
+            List<Path> recoveryFiles = buildRecoveryEntityResolutionFiles(files, primaryFiles, fallbackFiles);
+            if (!recoveryFiles.isEmpty()) {
+                System.out.println("CDM entity resolution recovery started: unresolved="
+                        + unresolvedReferencedUuids.size() + ", recoveryFiles=" + recoveryFiles.size());
+                madeProgress |= scanEntityFilesWithLocalFixpoint(recoveryFiles, unresolvedReferencedUuids, "recovery");
+            }
+        }
+
+        System.out.println("CDM entity resolution completed: resolvedNodes=" + rawNodesByUuid.size()
+                + ", unresolved=" + unresolvedReferencedUuids.size()
+                + ", referencedUuids=" + referencedUuids.size()
+                + ", progress=" + madeProgress);
+
+        if (!unresolvedReferencedUuids.isEmpty()) {
+            System.out.println("WARNING: CDM entity resolution ended with " + unresolvedReferencedUuids.size()
                     + " unresolved referenced UUID(s); path fallbacks will be used when available.");
         }
     }
 
-    private int countUnresolvedReferencedUuids() {
-        int count = 0;
+    private Set<String> buildUnresolvedReferencedUuids() {
+        Set<String> unresolved = new LinkedHashSet<>();
         for (String uuid : referencedUuids) {
-            if (!rawNodesByUuid.containsKey(uuid) && !uuidToFallbackSignature.containsKey(uuid)) {
-                count++;
+            if (!isUuidResolved(uuid)) {
+                unresolved.add(uuid);
             }
         }
-        return count;
+        return unresolved;
     }
 
-    private void resolveEntityIfReferenced(String recordType, GenericRecord datum) {
+    private boolean isUuidResolved(String uuid) {
+        return rawNodesByUuid.containsKey(uuid) || uuidToFallbackSignature.containsKey(uuid);
+    }
+
+    private List<Path> buildPrimaryEntityResolutionFiles(List<Path> files, List<Path> eventFiles) {
+        if (files.isEmpty()) {
+            return List.of();
+        }
+        if (eventFiles.isEmpty()) {
+            return new ArrayList<>(files);
+        }
+
+        Set<Path> eventFileSet = new HashSet<>(eventFiles);
+        int lastEventFileIndex = -1;
+        for (int i = 0; i < files.size(); i++) {
+            if (eventFileSet.contains(files.get(i))) {
+                lastEventFileIndex = i;
+            }
+        }
+        if (lastEventFileIndex < 0) {
+            return new ArrayList<>(files);
+        }
+
+        List<Path> primary = new ArrayList<>();
+        for (int i = lastEventFileIndex; i >= 0; i--) {
+            primary.add(files.get(i));
+        }
+        return primary;
+    }
+
+    private List<Path> buildFallbackEntityResolutionFiles(List<Path> files, List<Path> eventFiles, List<Path> primaryFiles) {
+        if (files.isEmpty() || eventFiles.isEmpty()) {
+            return List.of();
+        }
+
+        Set<Path> primaryFileSet = new HashSet<>(primaryFiles);
+        List<Path> fallback = new ArrayList<>();
+        for (Path file : files) {
+            if (!primaryFileSet.contains(file)) {
+                fallback.add(file);
+            }
+        }
+        return fallback;
+    }
+
+    private List<Path> buildRecoveryEntityResolutionFiles(List<Path> files, List<Path> primaryFiles,
+                                                          List<Path> fallbackFiles) {
+        Set<Path> alreadyScheduled = new HashSet<>(primaryFiles);
+        alreadyScheduled.addAll(fallbackFiles);
+        List<Path> recovery = new ArrayList<>();
+        for (int i = files.size() - 1; i >= 0; i--) {
+            Path file = files.get(i);
+            if (!alreadyScheduled.contains(file)) {
+                recovery.add(file);
+            }
+        }
+        return recovery;
+    }
+
+    private boolean scanEntityFilesWithLocalFixpoint(List<Path> files, Set<String> unresolvedReferencedUuids, String phase)
+            throws IOException {
+        if (files.isEmpty() || unresolvedReferencedUuids.isEmpty()) {
+            return false;
+        }
+
+        boolean madeProgress = false;
+        for (Path file : files) {
+            if (unresolvedReferencedUuids.isEmpty()) {
+                break;
+            }
+
+            madeProgress |= scanSingleEntityFileWithFixpoint(file, unresolvedReferencedUuids, phase);
+            if (unresolvedReferencedUuids.isEmpty()) {
+                System.out.println("CDM entity resolution " + phase + " early stop: resolved all references by "
+                        + file.getFileName());
+                return true;
+            }
+        }
+        return madeProgress;
+    }
+
+    private boolean scanSingleEntityFileWithFixpoint(Path file, Set<String> unresolvedReferencedUuids, String phase)
+            throws IOException {
+        boolean madeProgress = false;
+        int localPass = 1;
+
+        while (!unresolvedReferencedUuids.isEmpty()) {
+            int resolvedNodesBefore = rawNodesByUuid.size();
+            int referencedBefore = referencedUuids.size();
+            int unresolvedBefore = unresolvedReferencedUuids.size();
+
+            try (CdmAvroGzipReader reader = CdmAvroGzipReader.open(file)) {
+                for (GenericRecord topLevel : reader) {
+                    String recordType = CdmRecordAccess.recordType(topLevel);
+                    if ("RECORD_EVENT".equals(recordType)) {
+                        continue;
+                    }
+                    GenericRecord datum = CdmRecordAccess.datum(topLevel);
+                    madeProgress |= resolveEntityIfReferenced(recordType, datum, unresolvedReferencedUuids);
+                    if (unresolvedReferencedUuids.isEmpty()) {
+                        return true;
+                    }
+                }
+            }
+
+            int resolvedNodesAfter = rawNodesByUuid.size();
+            int referencedAfter = referencedUuids.size();
+            int unresolvedAfter = unresolvedReferencedUuids.size();
+
+            boolean resolvedSomething = resolvedNodesAfter > resolvedNodesBefore || unresolvedAfter < unresolvedBefore;
+            boolean discoveredNewReferences = referencedAfter > referencedBefore;
+            boolean shouldRescanSameFile = discoveredNewReferences && unresolvedAfter > 0;
+
+            if (localPass == 1 || resolvedSomething || discoveredNewReferences) {
+                System.out.println("CDM entity resolution " + phase + " file " + file.getFileName()
+                        + " pass " + localPass
+                        + ": resolvedNodesDelta=" + (resolvedNodesAfter - resolvedNodesBefore)
+                        + ", referencedDelta=" + (referencedAfter - referencedBefore)
+                        + ", unresolved=" + unresolvedAfter
+                        + ", rescan=" + shouldRescanSameFile);
+            }
+
+            if (!shouldRescanSameFile) {
+                break;
+            }
+            localPass++;
+        }
+        return madeProgress;
+    }
+
+    private boolean resolveEntityIfReferenced(String recordType, GenericRecord datum,
+                                              Set<String> unresolvedReferencedUuids) {
         if (datum == null || recordType == null) {
-            return;
+            return false;
         }
 
         String uuid = CdmRecordAccess.uuid(datum, "uuid");
-        if (uuid == null || !referencedUuids.contains(uuid) || rawNodesByUuid.containsKey(uuid)) {
-            return;
+        if (uuid == null || !unresolvedReferencedUuids.contains(uuid) || rawNodesByUuid.containsKey(uuid)) {
+            return false;
         }
 
+        int resolvedNodesBefore = rawNodesByUuid.size();
+        int referencedBefore = referencedUuids.size();
         switch (recordType) {
             case "RECORD_SUBJECT":
                 cacheSubject(datum);
@@ -332,6 +478,23 @@ public final class CdmGraphBuilder {
             default:
                 break;
         }
+
+        if (isUuidResolved(uuid)) {
+            unresolvedReferencedUuids.remove(uuid);
+        }
+
+        if ("RECORD_SUBJECT".equals(recordType)) {
+            String parentUuid = CdmRecordAccess.nullableUuid(datum, "parentSubject");
+            if (parentUuid != null && !parentUuid.trim().isEmpty()) {
+                referencedUuids.add(parentUuid);
+                if (!isUuidResolved(parentUuid)) {
+                    unresolvedReferencedUuids.add(parentUuid);
+                }
+            }
+        }
+
+        return rawNodesByUuid.size() > resolvedNodesBefore
+                || referencedUuids.size() > referencedBefore;
     }
 
     private void cacheSubject(GenericRecord subject) {
@@ -353,9 +516,6 @@ public final class CdmGraphBuilder {
         subjects.put(uuid, new SubjectInfo(parentUuid));
         registerSignatureRef(rawNodeInfo.signature, Ref.uuid(uuid));
 
-        if (parentUuid != null && !parentUuid.trim().isEmpty()) {
-            referencedUuids.add(parentUuid);
-        }
     }
 
     private void cacheFileObject(GenericRecord fileObject, String eventPathFallback) {
@@ -684,6 +844,19 @@ public final class CdmGraphBuilder {
                 + ", presliceTimeMs=" + presliceTimeMs
                 + ", materializeTimeMs=" + materializeTimeMs
                 + ", mappedEdges=" + mappedEdges);
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes >= 1024L * 1024L * 1024L) {
+            return String.format(Locale.ROOT, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
+        }
+        if (bytes >= 1024L * 1024L) {
+            return String.format(Locale.ROOT, "%.2f MB", bytes / (1024.0 * 1024.0));
+        }
+        if (bytes >= 1024L) {
+            return String.format(Locale.ROOT, "%.2f KB", bytes / 1024.0);
+        }
+        return bytes + " B";
     }
 
     private NodeRef processNode(String pid, String name) {
