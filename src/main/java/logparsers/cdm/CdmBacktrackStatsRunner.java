@@ -30,7 +30,7 @@ public final class CdmBacktrackStatsRunner {
         Path outputPrefix = positional.size() == 3 ? Path.of(positional.get(2)) : null;
 
         long started = System.currentTimeMillis();
-        DirectedPseudograph<EntityNode, EventEdge> original = CdmGraphBuilder.build(manifest);
+        DirectedPseudograph<EntityNode, EventEdge> original = CdmGraphBuilder.build(manifest, List.of(poi));
         long buildElapsedMs = System.currentTimeMillis() - started;
 
         BackTrack backTrack = new BackTrack(original);

@@ -112,8 +112,8 @@ public class ExperimentRunnerCmd {
 
     private void runSingleLog(File log, File resDir, String[] localIP, PrintStream originalOut,
                               PrintStream originalErr) throws IOException {
-        DirectedPseudograph<EntityNode, EventEdge> graphFromLog = loadGraph(log, localIP);
         List<Experiment> experimentsBackward = loadExperiments(log);
+        DirectedPseudograph<EntityNode, EventEdge> graphFromLog = loadGraph(log, localIP, experimentsBackward);
         JSONArray summaryExperiments = new JSONArray();
         JSONArray entryPointExperiments = new JSONArray();
         File oneRes = ensureDirectory(new File(resDir, getBaseName(log.getName())), false);
@@ -260,11 +260,12 @@ public class ExperimentRunnerCmd {
         }
     }
 
-    private DirectedPseudograph<EntityNode, EventEdge> loadGraph(File log, String[] localIP) throws IOException {
+    private DirectedPseudograph<EntityNode, EventEdge> loadGraph(File log, String[] localIP,
+                                                                 List<Experiment> experiments) throws IOException {
         try {
             if (isCdmManifest(log)) {
                 System.out.println("Detected CDM manifest, building graph from Theia/CDM Avro: " + log.getAbsolutePath());
-                return CdmGraphBuilder.build(log.toPath());
+                return CdmGraphBuilder.build(log.toPath(), collectPoiSignatures(log, experiments));
             }
             GetGraph generator = new GetGraph(log.getPath(), localIP);
             generator.GenerateGraph();
@@ -272,6 +273,20 @@ public class ExperimentRunnerCmd {
         } catch (Exception e) {
             throw new IOException("Failed to generate graph for log: " + log.getAbsolutePath(), e);
         }
+    }
+
+    private Set<String> collectPoiSignatures(File log, List<Experiment> experiments) throws IOException {
+        Set<String> poiSignatures = new HashSet<>();
+        for (Experiment experiment : experiments) {
+            if (experiment.POI != null && !experiment.POI.trim().isEmpty()) {
+                poiSignatures.add(experiment.POI.trim());
+            }
+        }
+        if (poiSignatures.isEmpty()) {
+            throw new IOException("CDM manifest requires at least one non-empty POI across matching .property files: "
+                    + log.getAbsolutePath());
+        }
+        return poiSignatures;
     }
 
     private List<Experiment> loadExperiments(File log) throws IOException {
