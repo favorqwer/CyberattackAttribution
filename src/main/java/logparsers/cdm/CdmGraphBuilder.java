@@ -391,50 +391,109 @@ public final class CdmGraphBuilder {
     private boolean scanSingleEntityFileWithFixpoint(Path file, Set<String> unresolvedReferencedUuids, String phase)
             throws IOException {
         boolean madeProgress = false;
-        int localPass = 1;
+        int resolvedNodesBefore = rawNodesByUuid.size();
+        int referencedBefore = referencedUuids.size();
+        int unresolvedBefore = unresolvedReferencedUuids.size();
+        Map<String, SubjectSnapshot> subjectSnapshots = new HashMap<>();
 
-        while (!unresolvedReferencedUuids.isEmpty()) {
-            int resolvedNodesBefore = rawNodesByUuid.size();
-            int referencedBefore = referencedUuids.size();
-            int unresolvedBefore = unresolvedReferencedUuids.size();
-
-            try (CdmAvroGzipReader reader = CdmAvroGzipReader.open(file)) {
-                for (GenericRecord topLevel : reader) {
-                    String recordType = CdmRecordAccess.recordType(topLevel);
-                    if ("RECORD_EVENT".equals(recordType)) {
-                        continue;
+        try (CdmAvroGzipReader reader = CdmAvroGzipReader.open(file)) {
+            for (GenericRecord topLevel : reader) {
+                String recordType = CdmRecordAccess.recordType(topLevel);
+                if ("RECORD_EVENT".equals(recordType)) {
+                    continue;
+                }
+                GenericRecord datum = CdmRecordAccess.datum(topLevel);
+                if ("RECORD_SUBJECT".equals(recordType)) {
+                    SubjectSnapshot snapshot = SubjectSnapshot.fromRecord(datum);
+                    if (snapshot != null) {
+                        subjectSnapshots.putIfAbsent(snapshot.uuid, snapshot);
+                        if (unresolvedReferencedUuids.contains(snapshot.uuid) && !rawNodesByUuid.containsKey(snapshot.uuid)) {
+                            madeProgress |= resolveSubjectSnapshot(snapshot, unresolvedReferencedUuids);
+                            if (unresolvedReferencedUuids.isEmpty()) {
+                                return true;
+                            }
+                        }
                     }
-                    GenericRecord datum = CdmRecordAccess.datum(topLevel);
-                    madeProgress |= resolveEntityIfReferenced(recordType, datum, unresolvedReferencedUuids);
-                    if (unresolvedReferencedUuids.isEmpty()) {
-                        return true;
-                    }
+                    continue;
+                }
+                madeProgress |= resolveEntityIfReferenced(recordType, datum, unresolvedReferencedUuids);
+                if (unresolvedReferencedUuids.isEmpty()) {
+                    return true;
                 }
             }
+        }
 
-            int resolvedNodesAfter = rawNodesByUuid.size();
-            int referencedAfter = referencedUuids.size();
-            int unresolvedAfter = unresolvedReferencedUuids.size();
+        boolean memoryFixpointProgress = resolveSubjectSnapshotsInMemory(subjectSnapshots, unresolvedReferencedUuids);
+        madeProgress |= memoryFixpointProgress;
 
-            boolean resolvedSomething = resolvedNodesAfter > resolvedNodesBefore || unresolvedAfter < unresolvedBefore;
-            boolean discoveredNewReferences = referencedAfter > referencedBefore;
-            boolean shouldRescanSameFile = discoveredNewReferences && unresolvedAfter > 0;
-
-            if (localPass == 1 || resolvedSomething || discoveredNewReferences) {
-                System.out.println("CDM entity resolution " + phase + " file " + file.getFileName()
-                        + " pass " + localPass
-                        + ": resolvedNodesDelta=" + (resolvedNodesAfter - resolvedNodesBefore)
-                        + ", referencedDelta=" + (referencedAfter - referencedBefore)
-                        + ", unresolved=" + unresolvedAfter
-                        + ", rescan=" + shouldRescanSameFile);
-            }
-
-            if (!shouldRescanSameFile) {
-                break;
-            }
-            localPass++;
+        int resolvedNodesAfter = rawNodesByUuid.size();
+        int referencedAfter = referencedUuids.size();
+        int unresolvedAfter = unresolvedReferencedUuids.size();
+        if (resolvedNodesAfter > resolvedNodesBefore || referencedAfter > referencedBefore
+                || unresolvedAfter < unresolvedBefore || !subjectSnapshots.isEmpty()) {
+            System.out.println("CDM entity resolution " + phase + " file " + file.getFileName()
+                    + ": resolvedNodesDelta=" + (resolvedNodesAfter - resolvedNodesBefore)
+                    + ", referencedDelta=" + (referencedAfter - referencedBefore)
+                    + ", unresolved=" + unresolvedAfter
+                    + ", cachedSubjects=" + subjectSnapshots.size()
+                    + ", memoryFixpoint=" + memoryFixpointProgress);
         }
         return madeProgress;
+    }
+
+    private boolean resolveSubjectSnapshotsInMemory(Map<String, SubjectSnapshot> subjectSnapshots,
+                                                    Set<String> unresolvedReferencedUuids) {
+        if (subjectSnapshots.isEmpty() || unresolvedReferencedUuids.isEmpty()) {
+            return false;
+        }
+
+        boolean madeProgress = false;
+        while (!unresolvedReferencedUuids.isEmpty()) {
+            boolean localProgress = false;
+            List<String> pendingUuids = new ArrayList<>(unresolvedReferencedUuids);
+            for (String uuid : pendingUuids) {
+                if (rawNodesByUuid.containsKey(uuid)) {
+                    unresolvedReferencedUuids.remove(uuid);
+                    continue;
+                }
+                SubjectSnapshot snapshot = subjectSnapshots.get(uuid);
+                if (snapshot == null) {
+                    continue;
+                }
+                localProgress |= resolveSubjectSnapshot(snapshot, unresolvedReferencedUuids);
+                if (unresolvedReferencedUuids.isEmpty()) {
+                    break;
+                }
+            }
+            if (!localProgress) {
+                break;
+            }
+            madeProgress = true;
+        }
+        return madeProgress;
+    }
+
+    private boolean resolveSubjectSnapshot(SubjectSnapshot snapshot, Set<String> unresolvedReferencedUuids) {
+        if (snapshot == null || rawNodesByUuid.containsKey(snapshot.uuid)) {
+            return false;
+        }
+
+        int resolvedNodesBefore = rawNodesByUuid.size();
+        int referencedBefore = referencedUuids.size();
+        cacheSubjectData(snapshot.uuid, snapshot.cid, snapshot.parentUuid, snapshot.path, snapshot.cmdLine);
+
+        if (isUuidResolved(snapshot.uuid)) {
+            unresolvedReferencedUuids.remove(snapshot.uuid);
+        }
+        if (snapshot.parentUuid != null && !snapshot.parentUuid.trim().isEmpty()) {
+            referencedUuids.add(snapshot.parentUuid);
+            if (!isUuidResolved(snapshot.parentUuid)) {
+                unresolvedReferencedUuids.add(snapshot.parentUuid);
+            }
+        }
+
+        return rawNodesByUuid.size() > resolvedNodesBefore
+                || referencedUuids.size() > referencedBefore;
     }
 
     private boolean resolveEntityIfReferenced(String recordType, GenericRecord datum,
@@ -507,6 +566,10 @@ public final class CdmGraphBuilder {
         String parentUuid = CdmRecordAccess.nullableUuid(subject, "parentSubject");
         String path = CdmRecordAccess.property(subject, "path");
         String cmdLine = CdmRecordAccess.nullableString(subject, "cmdLine");
+        cacheSubjectData(uuid, cid, parentUuid, path, cmdLine);
+    }
+
+    private void cacheSubjectData(String uuid, int cid, String parentUuid, String path, String cmdLine) {
         String name = CdmRecordAccess.firstNonBlank(baseName(path), firstCommandToken(cmdLine),
                 "subject-" + CdmRecordAccess.uuid8(uuid));
         String pid = cid + "@" + CdmRecordAccess.uuid8(uuid);
@@ -1064,6 +1127,37 @@ public final class CdmGraphBuilder {
             String signature = localAddress + ":" + localPort + "->" + remoteAddress + ":" + remotePort;
             return new RawNodeInfo(EntityKind.NETWORK, signature, null, null,
                     localAddress, remoteAddress, localPort, remotePort);
+        }
+    }
+
+    private static final class SubjectSnapshot {
+        private final String uuid;
+        private final int cid;
+        private final String parentUuid;
+        private final String path;
+        private final String cmdLine;
+
+        private SubjectSnapshot(String uuid, int cid, String parentUuid, String path, String cmdLine) {
+            this.uuid = uuid;
+            this.cid = cid;
+            this.parentUuid = parentUuid;
+            this.path = path;
+            this.cmdLine = cmdLine;
+        }
+
+        private static SubjectSnapshot fromRecord(GenericRecord subject) {
+            if (subject == null) {
+                return null;
+            }
+            String uuid = CdmRecordAccess.uuid(subject, "uuid");
+            if (uuid == null) {
+                return null;
+            }
+            int cid = CdmRecordAccess.intValue(subject, "cid", 0);
+            String parentUuid = CdmRecordAccess.nullableUuid(subject, "parentSubject");
+            String path = CdmRecordAccess.property(subject, "path");
+            String cmdLine = CdmRecordAccess.nullableString(subject, "cmdLine");
+            return new SubjectSnapshot(uuid, cid, parentUuid, path, cmdLine);
         }
     }
 
